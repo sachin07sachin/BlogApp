@@ -7,8 +7,7 @@
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
         <div class="page-heading">
-          <h1>Log In</h1>
-          <span class="subheading">Welcome Back!</span>
+          <h1>Verify Email</h1>
         </div>
       </div>
     </div>
@@ -37,70 +36,54 @@
       </div>
 
       <div class="col-lg-8 col-md-10 mx-auto">
-        <form method="POST" action="{{ url_for('login') }}" novalidate>
-          {{ login_form.hidden_tag() }}
+        <p>Haven't verified your email yet?</p>
+
+        <form
+          method="POST"
+          action="{{ url_for('resend_verification') }}"
+          novalidate
+        >
+          {{ resend_form.hidden_tag() }}
 
           <div class="mb-3">
-            {{ login_form.email.label(class="form-label") }} {{
-            login_form.email(class="form-control", placeholder="Enter your " ~
-            "email") }} {% if login_form.email.errors %}
+            {{ resend_form.email.label(class="form-label") }} {{
+            resend_form.email(class="form-control", placeholder="Enter your email") }} {% if resend_form.email.errors %}
             <div class="text-danger">
-              {% for error in login_form.email.errors %}
+              {% for error in resend_form.email.errors %}
               <small>{{ error }}</small>
               {% endfor %}
             </div>
             {% endif %}
           </div>
 
-          <div class="mb-3">
-            {{ login_form.password.label(class="form-label") }} {{
-            login_form.password(class="form-control", placeholder="Enter your "
-            ~ "password") }} {% if login_form.password.errors %}
-            <div class="text-danger">
-              {% for error in login_form.password.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </div>
-
-          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
-          hcaptcha_site_key %}
+          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and hcaptcha_site_key %}
           <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
           <script src="https://hcaptcha.com/1/api.js" async defer></script>
-          {% endif %}
+        {% endif %}
 
-          <button type="submit" id="loginBtn" class="btn btn-primary">
-            Log In
+          <button type="submit" id="resendBtn" class="btn btn-primary">
+            Resend Verification Email
           </button>
         </form>
-      </div>
-
-      <div class="mt-3 text-center">
-        <small>
-          <a href="{{ url_for('request_reset') }}" class="text-muted">
-            Forgot your password?
-          </a>
-        </small>
       </div>
     </div>
   </div>
 </main>
 {% endblock %} {% block scripts %}
 <script>
-  const lockoutSeconds = {{ lockout_seconds | default (0) | int }};
-  const btn = document.getElementById("loginBtn");
+  const remainingSeconds = {{ remaining_seconds | default(0) | int }};
+  const btn = document.getElementById("resendBtn");
 
-  if (lockoutSeconds > 0 && btn) {
+  if (remainingSeconds > 0 && btn) {
     btn.disabled = true;
     const originalText = btn.innerText;
-    let timer = lockoutSeconds;
+    let timer = remainingSeconds;
 
-    btn.innerText = `Try again in ${timer}s`;
+    btn.innerText = `Resend in ${timer}s`;
 
     const interval = setInterval(() => {
       timer--;
-      btn.innerText = `Try again in ${timer}s`;
+      btn.innerText = `Resend in ${timer}s`;
 
       if (timer <= 0) {
         clearInterval(interval);

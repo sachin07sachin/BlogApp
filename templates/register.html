@@ -1,9 +1,9 @@
-{% from "bootstrap5/form.html" import render_form %} {% block content %} {%
-include "header.html" %}
+{% extends "base.html" %}
 
+{% block header %}
 <header
   class="masthead"
-  style="background-image: url('../static/assets/img/register-bg.jpg')"
+  style="background-image: url('{{ url_for('static', filename='assets/img/register-bg.jpg') }}')"
 >
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
@@ -16,15 +16,74 @@ include "header.html" %}
     </div>
   </div>
 </header>
+{% endblock %}
 
+{% block content %}
 <main class="mb-4">
   <div class="container">
-    <div class="row">
+    <div class="row justify-content-center">
+
+      <!-- Flash Messages -->
+      <div class="col-lg-8 col-md-10">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      </div>
+
       <div class="col-lg-8 col-md-10 mx-auto">
-        {{render_form(form, novalidate=True, button_map={"submit": "primary"}) }}
+        <form method="POST" action="{{ url_for('register') }}" novalidate>
+          {{ form.hidden_tag() }}
+
+          <div class="mb-3">
+            {{ form.name.label(class="form-label") }}
+            {{ form.name(class="form-control", placeholder="Enter your name") }}
+            {% if form.name.errors %}
+              <div class="text-danger">
+                {% for error in form.name.errors %}
+                  <small>{{ error }}</small>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.email.label(class="form-label") }}
+            {{ form.email(class="form-control", placeholder="Enter your email") }}
+            {% if form.email.errors %}
+              <div class="text-danger">
+                {% for error in form.email.errors %}
+                  <small>{{ error }}</small>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.password.label(class="form-label") }}
+            {{ form.password(class="form-control", placeholder="Create a password") }}
+            {% if form.password.errors %}
+              <div class="text-danger">
+                {% for error in form.password.errors %}
+                  <small>{{ error }}</small>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            Register
+          </button>
+        </form>
       </div>
     </div>
   </div>
 </main>
+{% endblock %}
 
-{% include "footer.html" %} {% endblock %}

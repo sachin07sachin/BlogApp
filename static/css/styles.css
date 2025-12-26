@@ -10846,3 +10846,8 @@ header.masthead .post-heading .meta a {
   color: #ee6f57;
   text-align: center;
 }
+
+/* Optional: Makes icons darker when you hover over them */
+.social-icons a:hover {
+    color: #000 !important; /* or your brand color */
+}
