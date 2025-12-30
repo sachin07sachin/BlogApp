@@ -37,7 +37,7 @@
       </div>
 
       <div class="col-lg-8 col-md-10 mx-auto">
-        <form method="POST" action="{{ url_for('login') }}" novalidate>
+        <form method="POST" action="{{ url_for('login_post') }}" novalidate>
           {{ login_form.hidden_tag() }}
 
           <div class="mb-3">
@@ -78,7 +78,7 @@
 
       <div class="mt-3 text-center">
         <small>
-          <a href="{{ url_for('request_reset') }}" class="text-muted">
+          <a href="{{ url_for('request_reset_get') }}" class="text-muted">
             Forgot your password?
           </a>
         </small>
@@ -86,28 +86,4 @@
     </div>
   </div>
 </main>
-{% endblock %} {% block scripts %}
-<script>
-  const lockoutSeconds = {{ lockout_seconds | default (0) | int }};
-  const btn = document.getElementById("loginBtn");
-
-  if (lockoutSeconds > 0 && btn) {
-    btn.disabled = true;
-    const originalText = btn.innerText;
-    let timer = lockoutSeconds;
-
-    btn.innerText = `Try again in ${timer}s`;
-
-    const interval = setInterval(() => {
-      timer--;
-      btn.innerText = `Try again in ${timer}s`;
-
-      if (timer <= 0) {
-        clearInterval(interval);
-        btn.disabled = false;
-        btn.innerText = originalText;
-      }
-    }, 1000);
-  }
-</script>
 {% endblock %}

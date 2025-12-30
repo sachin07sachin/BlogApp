@@ -40,7 +40,7 @@
 
         <form
           method="POST"
-          action="{{ url_for('resend_verification') }}"
+          action="{{ url_for('resend_verification_post') }}"
           novalidate
         >
           {{ resend_form.hidden_tag() }}
@@ -69,28 +69,4 @@
     </div>
   </div>
 </main>
-{% endblock %} {% block scripts %}
-<script>
-  const remainingSeconds = {{ remaining_seconds | default(0) | int }};
-  const btn = document.getElementById("resendBtn");
-
-  if (remainingSeconds > 0 && btn) {
-    btn.disabled = true;
-    const originalText = btn.innerText;
-    let timer = remainingSeconds;
-
-    btn.innerText = `Resend in ${timer}s`;
-
-    const interval = setInterval(() => {
-      timer--;
-      btn.innerText = `Resend in ${timer}s`;
-
-      if (timer <= 0) {
-        clearInterval(interval);
-        btn.disabled = false;
-        btn.innerText = originalText;
-      }
-    }, 1000);
-  }
-</script>
 {% endblock %}

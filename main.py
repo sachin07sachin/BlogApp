@@ -38,11 +38,6 @@ from utils.email import send_email
 from utils.captcha import verify_hcaptcha
 
 # -------------------------------------------------------------------
-# CONFIGURATION & CONSTANTS
-
-# MAX_LOGIN_ATTEMPTS = 5
-# LOGIN_LOCK_SECONDS = 60
-# RESEND_COOLDOWN_SECONDS = 60  # Increased to 60s for better UX
 
 load_dotenv()
 if not os.environ.get("SECRET_KEY"):
@@ -81,7 +76,9 @@ app.config["PASSWORD_RESET_EXPIRES"] = int(
 # -------------------------------------------------
 # CAPTCHA GLOBAL SWITCH
 # -------------------------------------------------
-app.config["CAPTCHA_ENABLED"] = os.environ.get("ENV") == "production"
+app.config["CAPTCHA_ENABLED"] = (
+    os.environ.get("ENABLE_CAPTCHA", "false").lower() == "true"
+)
 
 # -------------------------------------------------
 # hCaptcha Configuration
@@ -131,7 +128,7 @@ migrate = Migrate(app, db)
 # LOGIN & RATE LIMITING
 
 login_manager = LoginManager()
-login_manager.login_view = "login"
+login_manager.login_view = "login_get"
 login_manager.login_message = "Please log in to access this page."
 login_manager.init_app(app)
 
@@ -148,9 +145,9 @@ RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"     # Per IP + Email
 
 # Account Lockout Settings
 MAX_LOGIN_ATTEMPTS = 5
-LOGIN_LOCK_SECONDS = 60         # 1 minute lockout for specific account
-RESEND_COOLDOWN_SECONDS = 60    # 1 minute wait for resending emails
-RESET_COOLDOWN_SECONDS = 60
+
+# captcha
+CAPTCHA_TRUST_SECONDS = 600  # 10 minutes
 
 
 # Security: Timing Attack Protection
@@ -203,7 +200,7 @@ limiter = Limiter(
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     flash("Your session expired. Please try again.", "warning")
-    return redirect(request.referrer or url_for("login"))
+    return redirect(request.referrer or url_for("login_get"))
 
 
 @app.errorhandler(RateLimitExceeded)
@@ -215,6 +212,7 @@ def handle_rate_limit(e):
 
     if app.config["CAPTCHA_ENABLED"]:
         session["captcha_required"] = True
+        session.pop("captcha_passed_at", None)  # 🔐 revoke trust on abuse
 
     logger.warning(
         f"Rate limit exceeded ({e.description}) "
@@ -229,29 +227,23 @@ def handle_rate_limit(e):
 
     endpoint = request.endpoint
 
-    if endpoint == "login":
+    if endpoint == "login_post":
         form = LoginForm()
         template = "login.html"
         context = {"login_form": form}
 
-    elif endpoint == "resend_verification":
+    elif endpoint == "resend_verification_post":
         form = ResendVerificationForm()
         template = "resend_verification.html"
-        context = {
-            "resend_form": form,
-            "remaining_seconds": 0,
-        }
+        context = {"resend_form": form}
 
-    elif endpoint == "request_reset":
+    elif endpoint == "request_reset_post":
         form = RequestResetForm()
         template = "request_reset.html"
-        context = {
-            "form": form,
-            "remaining_seconds": 0,
-        }
+        context = {"form": form}
 
     else:
-        return redirect(url_for("login"))
+        return redirect(url_for("login_get"))
 
     if request.method == "POST":
         form.process(request.form)
@@ -266,6 +258,29 @@ def handle_rate_limit(e):
     ), 429
 
 
+# -------------------------------------------------
+# Helper: check CAPTCHA trust window
+# -------------------------------------------------
+def is_captcha_trusted() -> bool:
+    """
+    Returns True if the user has recently passed CAPTCHA
+    and is still within the trust window.
+    """
+    captcha_passed_at = session.get("captcha_passed_at")
+    if not captcha_passed_at:
+        return False
+
+    try:
+        passed_at = datetime.fromtimestamp(
+            captcha_passed_at,
+            tz=timezone.utc
+        )
+        return (
+            datetime.now(timezone.utc) - passed_at
+        ).total_seconds() < CAPTCHA_TRUST_SECONDS
+    except Exception:
+        session.pop("captcha_passed_at", None)
+        return False
 
 
 @login_manager.user_loader
@@ -296,7 +311,6 @@ class User(UserMixin, db.Model):
     reset_password_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    login_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # 🟢 OPTIMIZED: passive_deletes=True tells SQLAlchemy to let the DB handle it
     posts = relationship("BlogPost", back_populates="author", passive_deletes=True)
@@ -440,44 +454,62 @@ def create_admin(email):
 @app.route("/register", methods=["GET", "POST"])
 def register():
     form = RegisterForm()
+
     if form.validate_on_submit():
         email = form.email.data.lower().strip()
-        
+
         if db.session.scalar(db.select(User).where(User.email == email)):
             flash("Account already exists. Please log in.", "warning")
-            return redirect(url_for("login"))
+            return redirect(url_for("login_get"))
 
         user = User(
             email=email,
-            password=generate_password_hash(form.password.data, method="pbkdf2:sha256", salt_length=16),
+            password=generate_password_hash(
+                form.password.data,
+                method="pbkdf2:sha256",
+                salt_length=16
+            ),
             name=form.name.data,
             verification_sent_at=datetime.now(timezone.utc)
         )
+
         db.session.add(user)
         db.session.commit()
 
-        # Send Verification
+        # Send verification email
         token = generate_email_token(user.id)
-        verify_url = url_for("verify_email", token=token, _external=True)
+        verify_url = url_for(
+            "verify_email",
+            token=token,
+            _external=True
+        )
+
         send_email(
             user.email,
             "Verify your email",
-            render_template("email/verify.html", verify_url=verify_url, user=user)
+            render_template(
+                "email/verify.html",
+                verify_url=verify_url,
+                user=user
+            )
         )
 
-        # Important: Store email in session for the resend countdown
-        session['verification_email'] = user.email
-        flash("Registration successful! Please check your email.", "success")
-        return redirect(url_for("resend_verification"))
+        flash(
+            "Registration successful! Please check your email to verify your account.",
+            "success"
+        )
+
+        return redirect(url_for("resend_verification_get"))
 
     return render_template("register.html", form=form)
+
 
 @app.route("/verify-email/<token>")
 def verify_email(token):
     data = confirm_email_token(token)
     if not data:
         flash("Invalid or expired verification link.", "danger")
-        return redirect(url_for("resend_verification"))
+        return redirect(url_for("resend_verification_get"))
 
     user = db.session.get(User, int(data["user_id"]))
     if not user:
@@ -497,82 +529,91 @@ def verify_email(token):
             "This verification link has been replaced by a newer one.",
             "danger"
         )
-        return redirect(url_for("resend_verification"))
+        return redirect(url_for("resend_verification_get"))
 
     if user.email_verified:
         flash("Email already verified. Please log in.", "info")
-        return redirect(url_for("login"))
+        return redirect(url_for("login_get"))
 
     user.email_verified = True
     db.session.commit()
 
-    flash("Email verified successfully!", "success")
-    return redirect(url_for("login"))
+    # 🔐 Clear any previous CAPTCHA trust
+    session.pop("captcha_required", None)
+    session.pop("captcha_passed_at", None)
 
+    flash("Email verified successfully! Please log in.", "success")
+    return redirect(url_for("login_get"))
 
-@app.route("/resend-verification", methods=["GET", "POST"])
+# ------
+@app.route("/resend-verification", methods=["GET"])
+def resend_verification_get():
+    resend_form = ResendVerificationForm()
+
+    return render_template(
+        "resend_verification.html",
+        resend_form=resend_form,
+        captcha_required=(
+            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+        ),
+        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+    )
+
+@app.route("/resend-verification", methods=["POST"])
 @limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
 @limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
-def resend_verification():
+def resend_verification_post():
     resend_form = ResendVerificationForm()
-    cooldown = timedelta(seconds=RESEND_COOLDOWN_SECONDS)
-    remaining_seconds = 0
+    captcha_trusted = is_captcha_trusted()
+    now = datetime.now(timezone.utc)
 
-    # -------------------------------------------------
-    # POST: User requests verification email
-    # -------------------------------------------------
     if resend_form.validate_on_submit():
 
-        # 🚨 CAPTCHA check (only if escalated)
-        if app.config["CAPTCHA_ENABLED"] and session.get("captcha_required"):
+        # -------------------------------------------------
+        # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+        # -------------------------------------------------
+        if (
+            app.config["CAPTCHA_ENABLED"]
+            and session.get("captcha_required")
+            and not captcha_trusted
+        ):
             token = request.form.get("h-captcha-response")
             if not verify_hcaptcha(token, get_remote_address()):
-                flash("CAPTCHA verification failed.", "danger")
+                flash("CAPTCHA verification failed. Please try again.", "danger")
                 return render_template(
                     "resend_verification.html",
                     resend_form=resend_form,
-                    remaining_seconds=0,
                     captcha_required=True,
                     hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
                 )
+
+            # CAPTCHA passed successfully → grant temporary trust
+            session["captcha_passed_at"] = now.timestamp()
+            session.pop("captcha_required", None)
 
         email = resend_form.email.data.lower().strip()
         user = db.session.scalar(
             db.select(User).where(User.email == email)
         )
 
-        # 🛡️ Fake success for non-existing users (no enumeration)
+        # -------------------------------------------------
+        # 🛡️ Fake success (prevents email enumeration)
+        # -------------------------------------------------
+        flash(
+            "If an account exists, a verification email has been sent.",
+            "info"
+        )
+
         if not user:
-            flash(
-                "If an account exists, a verification email has been sent.",
-                "info"
-            )
             session.pop("captcha_required", None)
-            return redirect(url_for("resend_verification"))
+            return redirect(url_for("resend_verification_get"))
 
+        # -------------------------------------------------
         # Already verified
+        # -------------------------------------------------
         if user.email_verified:
-            flash(
-                "This email is already verified. Please log in.",
-                "info"
-            )
-            return redirect(url_for("login"))
-
-        # -------------------------------------------------
-        # Cooldown enforcement
-        # -------------------------------------------------
-        if user.verification_sent_at:
-            last_sent = user.verification_sent_at.replace(
-                tzinfo=timezone.utc
-            )
-            delta = datetime.now(timezone.utc) - last_sent
-
-            if delta < cooldown:
-                # Escalate CAPTCHA on abuse
-                if app.config["CAPTCHA_ENABLED"]:
-                    session["captcha_required"] = True
-                session["verification_email"] = user.email
-                return redirect(url_for("resend_verification"))
+            flash("This email is already verified. Please log in.", "info")
+            return redirect(url_for("login_get"))
 
         # -------------------------------------------------
         # Send verification email
@@ -594,105 +635,195 @@ def resend_verification():
             )
         )
 
-        user.verification_sent_at = datetime.now(timezone.utc)
+        # 🔐 Security timestamp (invalidates older links)
+        user.verification_sent_at = now
         db.session.commit()
 
-        session["verification_email"] = user.email
+        # Clear CAPTCHA escalation after successful flow
         session.pop("captcha_required", None)
 
-        flash("Verification email sent!", "success")
-        return redirect(url_for("resend_verification"))
+        flash("Verification email sent successfully!", "success")
+        return redirect(url_for("resend_verification_get"))
 
     # -------------------------------------------------
-    # GET: Calculate remaining cooldown time
-    # -------------------------------------------------
-    target_user = None
-    if current_user.is_authenticated:
-        target_user = current_user
-    elif "verification_email" in session:
-        target_user = db.session.scalar(
-            db.select(User).where(
-                User.email == session["verification_email"]
-            )
-        )
-
-    if target_user and target_user.verification_sent_at:
-        last_sent = target_user.verification_sent_at.replace(
-            tzinfo=timezone.utc
-        )
-        delta = datetime.now(timezone.utc) - last_sent
-
-        if delta < cooldown:
-            remaining_seconds = int(
-                (cooldown - delta).total_seconds()
-            )
-        else:
-            session.pop("verification_email", None)
-
-    # -------------------------------------------------
-    # Render page
+    # Validation failed → re-render safely
     # -------------------------------------------------
     return render_template(
         "resend_verification.html",
         resend_form=resend_form,
-        remaining_seconds=remaining_seconds,
-        captcha_required=session.get("captcha_required"),
+        captcha_required=(
+            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+        ),
         hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
     )
 
 
-from utils.captcha import verify_hcaptcha
+# ------
 
-@app.route("/request-reset", methods=["GET", "POST"])
+# @app.route("/resend-verification", methods=["GET", "POST"])
+# @limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
+# @limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
+# def resend_verification():
+#     resend_form = ResendVerificationForm()
+#     captcha_trusted = is_captcha_trusted()
+#     now = datetime.now(timezone.utc)
+
+#     # -------------------------------------------------
+#     # POST: User requests verification email
+#     # -------------------------------------------------
+#     if resend_form.validate_on_submit():
+
+#         # -------------------------------------------------
+#         # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+#         # -------------------------------------------------
+#         if (
+#             app.config["CAPTCHA_ENABLED"]
+#             and session.get("captcha_required")
+#             and not captcha_trusted
+#         ):
+#             token = request.form.get("h-captcha-response")
+#             if not verify_hcaptcha(token, get_remote_address()):
+#                 flash("CAPTCHA verification failed. Please try again.", "danger")
+#                 return render_template(
+#                     "resend_verification.html",
+#                     resend_form=resend_form,
+#                     captcha_required=True,
+#                     hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#                 )
+
+#             # CAPTCHA passed successfully → grant temporary trust
+#             session["captcha_passed_at"] = now.timestamp()
+#             session.pop("captcha_required", None)
+
+#         email = resend_form.email.data.lower().strip()
+#         user = db.session.scalar(
+#             db.select(User).where(User.email == email)
+#         )
+
+#         # -------------------------------------------------
+#         # 🛡️ Fake success for non-existing users (no enumeration)
+#         # -------------------------------------------------
+#         flash(
+#             "If an account exists, a verification email has been sent.",
+#             "info"
+#         )
+
+#         if not user:
+#             session.pop("captcha_required", None)
+#             return redirect(url_for("resend_verification"))
+
+#         # -------------------------------------------------
+#         # Already verified
+#         # -------------------------------------------------
+#         if user.email_verified:
+#             flash(
+#                 "This email is already verified. Please log in.",
+#                 "info"
+#             )
+#             return redirect(url_for("login"))
+
+#         # -------------------------------------------------
+#         # Send verification email
+#         # -------------------------------------------------
+#         token = generate_email_token(user.id)
+#         verify_url = url_for(
+#             "verify_email",
+#             token=token,
+#             _external=True
+#         )
+
+#         send_email(
+#             user.email,
+#             "Verify your email",
+#             render_template(
+#                 "email/verify.html",
+#                 verify_url=verify_url,
+#                 user=user
+#             )
+#         )
+
+#         # 🔐 Security timestamp (invalidates older links)
+#         user.verification_sent_at = now
+#         db.session.commit()
+
+#         # Clear CAPTCHA escalation after successful flow
+#         session.pop("captcha_required", None)
+
+#         flash("Verification email sent successfully!", "success")
+#         return redirect(url_for("resend_verification"))
+
+#     # -------------------------------------------------
+#     # GET: Render page
+#     # -------------------------------------------------
+#     return render_template(
+#         "resend_verification.html",
+#         resend_form=resend_form,
+#         captcha_required=(
+#             app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+#         ),
+#         hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#     )
+
+# ----------
+@app.route("/request-reset", methods=["GET"])
+def request_reset_get():
+    form = RequestResetForm()
+
+    return render_template(
+        "request_reset.html",
+        form=form,
+        captcha_required=(
+            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+        ),
+        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+    )
+
+@app.route("/request-reset", methods=["POST"])
 @limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
 @limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
-def request_reset():
+def request_reset_post():
     form = RequestResetForm()
-    cooldown = timedelta(seconds=RESET_COOLDOWN_SECONDS)
-    remaining_seconds = 0
+    captcha_trusted = is_captcha_trusted()
+    now = datetime.now(timezone.utc)
 
-    # -------------------------------------------------
-    # POST: User requests password reset
-    # -------------------------------------------------
     if form.validate_on_submit():
 
-        # 🚨 CAPTCHA check (only if escalated)
-        if app.config["CAPTCHA_ENABLED"] and session.get("captcha_required"):
+        # -------------------------------------------------
+        # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+        # -------------------------------------------------
+        if (
+            app.config["CAPTCHA_ENABLED"]
+            and session.get("captcha_required")
+            and not captcha_trusted
+        ):
             token = request.form.get("h-captcha-response")
             if not verify_hcaptcha(token, get_remote_address()):
-                flash("CAPTCHA verification failed.", "danger")
+                flash("CAPTCHA verification failed. Please try again.", "danger")
                 return render_template(
                     "request_reset.html",
                     form=form,
-                    remaining_seconds=0,
                     captcha_required=True,
                     hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
                 )
+
+            # CAPTCHA passed successfully → grant temporary trust
+            session["captcha_passed_at"] = now.timestamp()
+            session.pop("captcha_required", None)
 
         email = form.email.data.lower().strip()
         user = db.session.scalar(
             db.select(User).where(User.email == email)
         )
 
+        # -------------------------------------------------
         # 🛡️ Fake success (prevents email enumeration)
+        # -------------------------------------------------
         flash(
-            "If an account exists, a reset link has been sent.",
+            "If an account exists, a password reset link has been sent.",
             "info"
         )
 
         if user:
-            # -------------------------------------------------
-            # Cooldown enforcement
-            # -------------------------------------------------
-            if user.reset_password_sent_at:
-                delta = datetime.now(timezone.utc) - user.reset_password_sent_at
-                if delta < cooldown:
-                    # Escalate CAPTCHA on abuse
-                    if app.config["CAPTCHA_ENABLED"]:
-                        session["captcha_required"] = True
-                    session["reset_email"] = email
-                    return redirect(url_for("request_reset"))
-
             # -------------------------------------------------
             # Send reset email
             # -------------------------------------------------
@@ -713,44 +844,118 @@ def request_reset():
                 )
             )
 
-            user.reset_password_sent_at = datetime.now(timezone.utc)
+            # 🔐 Security timestamp (invalidates older reset links)
+            user.reset_password_sent_at = now
             db.session.commit()
-            session["reset_email"] = email
 
-        # CAPTCHA no longer required after successful flow
+        # Clear CAPTCHA escalation after successful flow
         session.pop("captcha_required", None)
-        return redirect(url_for("request_reset"))
+
+        return redirect(url_for("request_reset_get"))
 
     # -------------------------------------------------
-    # GET: Calculate remaining cooldown time
-    # -------------------------------------------------
-    target_user = None
-    if "reset_email" in session:
-        target_user = db.session.scalar(
-            db.select(User).where(
-                User.email == session["reset_email"]
-            )
-        )
-
-    if target_user and target_user.reset_password_sent_at:
-        delta = datetime.now(timezone.utc) - target_user.reset_password_sent_at
-        if delta < cooldown:
-            remaining_seconds = int(
-                (cooldown - delta).total_seconds()
-            )
-        else:
-            session.pop("reset_email", None)
-
-    # -------------------------------------------------
-    # Render page
+    # Validation failed → re-render safely
     # -------------------------------------------------
     return render_template(
         "request_reset.html",
         form=form,
-        remaining_seconds=remaining_seconds,
-        captcha_required=session.get("captcha_required"),
+        captcha_required=(
+            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+        ),
         hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
     )
+
+# ----------
+
+# @app.route("/request-reset", methods=["GET", "POST"])
+# @limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
+# @limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
+# def request_reset():
+#     form = RequestResetForm()
+#     captcha_trusted = is_captcha_trusted()
+#     now = datetime.now(timezone.utc)
+
+#     # -------------------------------------------------
+#     # POST: User requests password reset
+#     # -------------------------------------------------
+#     if form.validate_on_submit():
+
+#         # -------------------------------------------------
+#         # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+#         # -------------------------------------------------
+#         if (
+#             app.config["CAPTCHA_ENABLED"]
+#             and session.get("captcha_required")
+#             and not captcha_trusted
+#         ):
+#             token = request.form.get("h-captcha-response")
+#             if not verify_hcaptcha(token, get_remote_address()):
+#                 flash("CAPTCHA verification failed. Please try again.", "danger")
+#                 return render_template(
+#                     "request_reset.html",
+#                     form=form,
+#                     captcha_required=True,
+#                     hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#                 )
+
+#             # CAPTCHA passed successfully → grant temporary trust
+#             session["captcha_passed_at"] = now.timestamp()
+#             session.pop("captcha_required", None)
+
+#         email = form.email.data.lower().strip()
+#         user = db.session.scalar(
+#             db.select(User).where(User.email == email)
+#         )
+
+#         # -------------------------------------------------
+#         # 🛡️ Fake success (prevents email enumeration)
+#         # -------------------------------------------------
+#         flash(
+#             "If an account exists, a password reset link has been sent.",
+#             "info"
+#         )
+
+#         if user:
+#             # -------------------------------------------------
+#             # Send reset email
+#             # -------------------------------------------------
+#             token = generate_password_reset_token(user.id)
+#             reset_url = url_for(
+#                 "reset_password",
+#                 token=token,
+#                 _external=True
+#             )
+
+#             send_email(
+#                 user.email,
+#                 "Reset your password",
+#                 render_template(
+#                     "email/reset_password.html",
+#                     reset_url=reset_url,
+#                     user=user
+#                 )
+#             )
+
+#             # 🔐 Security timestamp (invalidates older reset links)
+#             user.reset_password_sent_at = now
+#             db.session.commit()
+
+#         # Clear CAPTCHA escalation after successful flow
+#         session.pop("captcha_required", None)
+
+#         return redirect(url_for("request_reset"))
+
+#     # -------------------------------------------------
+#     # GET: Render page
+#     # -------------------------------------------------
+#     return render_template(
+#         "request_reset.html",
+#         form=form,
+#         captcha_required=(
+#             app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+#         ),
+#         hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#     )
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
@@ -758,12 +963,12 @@ def reset_password(token):
     data = confirm_password_reset_token(token)
     if not data:
         flash("Invalid or expired reset link.", "danger")
-        return redirect(url_for("request_reset"))
+        return redirect(url_for("request_reset_get"))
 
     user = db.session.get(User, int(data["user_id"]))
     if not user:
         flash("User not found.", "danger")
-        return redirect(url_for("request_reset"))
+        return redirect(url_for("request_reset_get"))
 
     token_issued_at = datetime.fromtimestamp(
         data["iat"], tz=timezone.utc
@@ -778,7 +983,7 @@ def reset_password(token):
             "This reset link has been replaced by a newer one.",
             "danger"
         )
-        return redirect(url_for("request_reset"))
+        return redirect(url_for("request_reset_get"))
 
     form = ResetPasswordForm()
 
@@ -804,7 +1009,7 @@ def reset_password(token):
             "Password reset successful. Please log in again.",
             "success"
         )
-        return redirect(url_for("login"))
+        return redirect(url_for("login_get"))
 
     return render_template("reset_password.html", form=form)
 
@@ -812,136 +1017,228 @@ def reset_password(token):
 
 # -------------------------------------------------------------------------
 # Login Route
-# -------------------------------------------------------------------------
+# ------------------------------------------------------------------------
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET"])
+def login_get():
+    form = LoginForm()
+
+    return render_template(
+        "login.html",
+        login_form=form,
+        captcha_required=(
+            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+        ),
+        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+    )
+
+@app.route("/login", methods=["POST"])
 # Layer 1: Global IP Protection
 @limiter.limit(RATE_LIMIT_LOGIN_GLOBAL, key_func=get_remote_address)
 # Layer 2: Specific Account Protection
 @limiter.limit(RATE_LIMIT_LOGIN_SPECIFIC, key_func=login_rate_limit_key)
-def login():
+def login_post():
     form = LoginForm()
+    now = datetime.now(timezone.utc)
 
-    if form.validate_on_submit():
+    # -------------------------------------------------
+    # CAPTCHA trust window check
+    # -------------------------------------------------
+    captcha_trusted = is_captcha_trusted()
 
-        # -------------------------------------------------
-        # 🚨 CAPTCHA CHECK (only if required)
-        # -------------------------------------------------
-        if app.config["CAPTCHA_ENABLED"] and session.get("captcha_required"):
-            token = request.form.get("h-captcha-response")
-            if not verify_hcaptcha(token, get_remote_address()):
-                flash("CAPTCHA verification failed.", "danger")
-                return render_template(
-                    "login.html",
-                    login_form=form,
-                    captcha_required=True,
-                    hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
-                )
+    if not form.validate_on_submit():
+        return redirect(url_for("login_get"))
 
-        email = form.email.data.lower().strip()
-        password = form.password.data
-        now = datetime.now(timezone.utc)
+    # -------------------------------------------------
+    # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+    # -------------------------------------------------
+    if (
+        app.config["CAPTCHA_ENABLED"]
+        and session.get("captcha_required")
+        and not captcha_trusted
+    ):
+        token = request.form.get("h-captcha-response")
+        if not verify_hcaptcha(token, get_remote_address()):
+            flash("CAPTCHA verification failed. Please try again.", "danger")
+            return redirect(url_for("login_get"))
 
-        # Fetch user
-        user = db.session.scalar(db.select(User).where(User.email == email))
-
-        # -------------------------------------------------
-        # 1️⃣ Database Lockout Check (with remaining time)
-        # -------------------------------------------------
-        if user and user.login_locked_until and user.login_locked_until > now:
-            remaining = int((user.login_locked_until - now).total_seconds())
-
-            if remaining <= 0:
-                # Lock expired just now
-                user.login_locked_until = None
-                user.failed_login_count = 0
-                db.session.commit()
-            else:
-                logger.info(f"Locked account login attempt: {email}")
-                session["captcha_required"] = True  # escalate
-                flash("Please try again later.", "danger")
-                return render_template(
-                    "login.html",
-                    login_form=form,
-                    lockout_seconds=remaining,
-                    captcha_required=True,
-                    hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
-                )
-
-        # -------------------------------------------------
-        # 2️⃣ Credential Validation (Timing-safe)
-        # -------------------------------------------------
-        valid_password = False
-        if user:
-            valid_password = check_password_hash(user.password, password)
-        else:
-            check_password_hash(DUMMY_PASSWORD_HASH, password)
-
-        # -------------------------------------------------
-        # 3️⃣ Handle Failure
-        # -------------------------------------------------
-        if not user or not valid_password:
-            if user:
-                user.failed_login_count += 1
-                logger.info(
-                    f"Failed login for {email}. Count: {user.failed_login_count}"
-                )
-
-                if user.failed_login_count >= MAX_LOGIN_ATTEMPTS:
-                    user.login_locked_until = now + timedelta(
-                        seconds=LOGIN_LOCK_SECONDS
-                    )
-                    user.failed_login_count = 0
-                    if app.config["CAPTCHA_ENABLED"]:
-                        session["captcha_required"] = True  # escalate
-                    db.session.commit()
-
-                    logger.warning(
-                        f"Account locked due to max attempts: {email}"
-                    )
-                    flash("Too many failed attempts. Please try again later.", "danger")
-
-                    return render_template(
-                        "login.html",
-                        login_form=form,
-                        lockout_seconds=LOGIN_LOCK_SECONDS,
-                        captcha_required=True,
-                        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
-                    )
-
-                db.session.commit()
-
-            flash("Invalid email or password.", "danger")
-            return redirect(url_for("login"))
-
-        # -------------------------------------------------
-        # 4️⃣ Handle Success
-        # -------------------------------------------------
-        user.failed_login_count = 0
-        user.login_locked_until = None
-        db.session.commit()
-
-        # Clear CAPTCHA escalation on success
+        # CAPTCHA passed successfully → grant temporary trust
+        session["captcha_passed_at"] = now.timestamp()
         session.pop("captcha_required", None)
 
-        if not user.email_verified:
-            logger.info(f"Unverified login attempt: {email}")
-            flash("Please verify your email before logging in.", "warning")
-            return redirect(url_for("resend_verification"))
-
-        logger.info(f"Successful login: {email}")
-        login_user(user, fresh=True)
-        return redirect(url_for("get_all_posts"))
+    email = form.email.data.lower().strip()
+    password = form.password.data
 
     # -------------------------------------------------
-    # GET Request
+    # Fetch user
     # -------------------------------------------------
-    return render_template(
-        "login.html",
-        login_form=form,
-        captcha_required=session.get("captcha_required"),
-        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+    user = db.session.scalar(
+        db.select(User).where(User.email == email)
     )
+
+    # -------------------------------------------------
+    # 1️⃣ Credential Validation (Timing-safe)
+    # -------------------------------------------------
+    valid_password = False
+    if user:
+        valid_password = check_password_hash(user.password, password)
+    else:
+        # Timing attack protection
+        check_password_hash(DUMMY_PASSWORD_HASH, password)
+
+    # -------------------------------------------------
+    # 2️⃣ Handle Failure
+    # -------------------------------------------------
+    if not user or not valid_password:
+        if user:
+            user.failed_login_count += 1
+            logger.info(
+                f"Failed login for {email}. Count: {user.failed_login_count}"
+            )
+
+            # 🔐 Escalate to CAPTCHA after max attempts
+            if user.failed_login_count >= MAX_LOGIN_ATTEMPTS:
+                user.failed_login_count = 0
+                session["captcha_required"] = True
+                session.pop("captcha_passed_at", None)  # revoke trust
+
+                logger.warning(
+                    f"CAPTCHA escalation triggered for {email}"
+                )
+
+            db.session.commit()
+
+        flash("Invalid email or password.", "danger")
+        return redirect(url_for("login_get"))
+
+    # -------------------------------------------------
+    # 3️⃣ Handle Success
+    # -------------------------------------------------
+    user.failed_login_count = 0
+    db.session.commit()
+
+    # Clear CAPTCHA state on success
+    session.pop("captcha_required", None)
+    session.pop("captcha_passed_at", None)
+
+    if not user.email_verified:
+        logger.info(f"Unverified login attempt: {email}")
+        flash("Please verify your email before logging in.", "warning")
+        return redirect(url_for("resend_verification_get"))
+
+    logger.info(f"Successful login: {email}")
+    login_user(user, fresh=True)
+
+    return redirect(url_for("get_all_posts"))
+
+
+# ------------------------------------------
+
+# @app.route("/login", methods=["GET", "POST"])
+# # Layer 1: Global IP Protection
+# @limiter.limit(RATE_LIMIT_LOGIN_GLOBAL, key_func=get_remote_address)
+# # Layer 2: Specific Account Protection
+# @limiter.limit(RATE_LIMIT_LOGIN_SPECIFIC, key_func=login_rate_limit_key)
+# def login():
+#     form = LoginForm()
+#     captcha_trusted = is_captcha_trusted()
+#     now = datetime.now(timezone.utc)
+
+#     if form.validate_on_submit():
+
+#         # -------------------------------------------------
+#         # 🚨 CAPTCHA CHECK (only if required AND not trusted)
+#         # -------------------------------------------------
+#         if (
+#             app.config["CAPTCHA_ENABLED"]
+#             and session.get("captcha_required")
+#             and not captcha_trusted
+#         ):
+#             token = request.form.get("h-captcha-response")
+#             if not verify_hcaptcha(token, get_remote_address()):
+#                 flash("CAPTCHA verification failed. Please try again.", "danger")
+#                 return render_template(
+#                     "login.html",
+#                     login_form=form,
+#                     captcha_required=True,
+#                     hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#                 )
+
+#             # CAPTCHA passed successfully → grant temporary trust
+#             session["captcha_passed_at"] = now.timestamp()
+#             session.pop("captcha_required", None)
+
+#         email = form.email.data.lower().strip()
+#         password = form.password.data
+
+#         # Fetch user
+#         user = db.session.scalar(db.select(User).where(User.email == email))
+
+#         # -------------------------------------------------
+#         # 1️⃣ Credential Validation (Timing-safe)
+#         # -------------------------------------------------
+#         valid_password = False
+#         if user:
+#             valid_password = check_password_hash(user.password, password)
+#         else:
+#             # Timing attack protection
+#             check_password_hash(DUMMY_PASSWORD_HASH, password)
+
+#         # -------------------------------------------------
+#         # 2️⃣ Handle Failure
+#         # -------------------------------------------------
+#         if not user or not valid_password:
+#             if user:
+#                 user.failed_login_count += 1
+#                 logger.info(
+#                     f"Failed login for {email}. Count: {user.failed_login_count}"
+#                 )
+
+#                 # 🔐 Escalate to CAPTCHA after max attempts
+#                 if user.failed_login_count >= MAX_LOGIN_ATTEMPTS:
+#                     user.failed_login_count = 0
+#                     session["captcha_required"] = True
+#                     session.pop("captcha_passed_at", None)  # revoke trust
+
+#                     logger.warning(
+#                         f"CAPTCHA escalation triggered for {email}"
+#                     )
+
+#                 db.session.commit()
+
+#             flash("Invalid email or password.", "danger")
+#             return redirect(url_for("login"))
+
+#         # -------------------------------------------------
+#         # 3️⃣ Handle Success
+#         # -------------------------------------------------
+#         user.failed_login_count = 0
+#         db.session.commit()
+
+#         # Clear CAPTCHA state on success
+#         session.pop("captcha_required", None)
+#         session.pop("captcha_passed_at", None)
+
+#         if not user.email_verified:
+#             logger.info(f"Unverified login attempt: {email}")
+#             flash("Please verify your email before logging in.", "warning")
+#             return redirect(url_for("resend_verification"))
+
+#         logger.info(f"Successful login: {email}")
+#         login_user(user, fresh=True)
+#         return redirect(url_for("get_all_posts"))
+
+#     # -------------------------------------------------
+#     # GET Request
+#     # -------------------------------------------------
+#     return render_template(
+#         "login.html",
+#         login_form=form,
+#         captcha_required=(
+#             app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
+#         ),
+#         hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
+#     )
 
 
 
@@ -949,6 +1246,11 @@ def login():
 @login_required
 def logout():
     logout_user()
+
+    # 🔐 Clear security-related session state
+    session.pop("captcha_required", None)
+    session.pop("captcha_passed_at", None)
+
     return redirect(url_for("get_all_posts"))
 
 # -------------------------------------------------------------------
@@ -968,11 +1270,11 @@ def show_post(post_id):
     if form.validate_on_submit():
         if not current_user.is_authenticated:
             flash("You need to login to comment.", "warning")
-            return redirect(url_for("login"))
+            return redirect(url_for("login_get"))
         
         if not current_user.email_verified:
             flash("Please verify your email first.", "warning")
-            return redirect(url_for("resend_verification"))
+            return redirect(url_for("resend_verification_get"))
 
         comment = Comment(
             text=cleanify(form.comment_text.data),

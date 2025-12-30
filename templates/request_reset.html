@@ -30,7 +30,7 @@
       <div class="col-lg-8 col-md-10 mx-auto">
         <p>Enter your email to receive a password reset link.</p>
 
-        <form method="POST" novalidate>
+        <form method="POST" action="{{ url_for('request_reset_post') }}" novalidate>
           {{ form.hidden_tag() }}
 
           <div class="mb-3">
@@ -54,28 +54,4 @@
     </div>
   </div>
 </main>
-{% endblock %} {% block scripts %}
-<script>
-  const remainingSeconds = {{ remaining_seconds | default(0) | int }};
-  const btn = document.getElementById("resetBtn");
-
-  if (remainingSeconds > 0 && btn) {
-    btn.disabled = true;
-    const originalText = btn.innerText;
-    let timer = remainingSeconds;
-
-    btn.innerText = `Try again in ${timer}s`;
-
-    const interval = setInterval(() => {
-      timer--;
-      btn.innerText = `Try again in ${timer}s`;
-
-      if (timer <= 0) {
-        clearInterval(interval);
-        btn.disabled = false;
-        btn.innerText = originalText;
-      }
-    }, 1000);
-  }
-</script>
 {% endblock %}
