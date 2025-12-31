@@ -1,10 +1,97 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-  <body>
-    <p>Hello {{ user.name or user.email }},</p>
-    <p>Click the link below to verify your email for the blog:</p>
-    <p><a href="{{ verify_url }}">{{ verify_url }}</a></p>
-    <p>This link expires in {{ config['EMAIL_TOKEN_EXPIRES'] // 60 }} minutes.</p>
-    <p>Thanks — Blog Team</p>
-  </body>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Verify Your Email</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f4f4f7;
+            color: #51545E;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .content-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 40px;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #28a745; /* Green for Success */
+            color: #ffffff;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin: 25px 0;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background-color: #218838;
+        }
+        .info-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .expiry-text {
+            color: #888;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #a8aaaf;
+            margin-top: 20px;
+            line-height: 1.5;
+        }
+        .fallback-link {
+            font-size: 12px;
+            color: #007bff;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="content-card">
+            
+            <h2 style="color: #333; margin-top: 0;">Welcome to the Blog!</h2>
+            
+            <p class="info-text">Hello {{ user.name or user.email }},</p>
+            
+            <p class="info-text">
+                Thanks for signing up. Please verify your email address to activate your account.
+            </p>
+
+            <a href="{{ verify_url }}" class="btn">Verify Email Address</a>
+
+            <div class="expiry-text">
+                <p>This link will expire in <strong>{{ config['EMAIL_TOKEN_EXPIRES'] // 60 }} minutes</strong>.</p>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="font-size: 12px; color: #999;">
+                Button not working? Copy link:<br>
+                <a href="{{ verify_url }}" class="fallback-link">{{ verify_url }}</a>
+            </p>
+
+        </div>
+
+        <div class="footer">
+            <p>Thanks,<br>The Blog Team</p>
+        </div>
+    </div>
+
+</body>
 </html>

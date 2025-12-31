@@ -30,7 +30,11 @@
       <div class="col-lg-8 col-md-10 mx-auto">
         <p>Enter your email to receive a password reset link.</p>
 
-        <form method="POST" action="{{ url_for('request_reset_post') }}" novalidate>
+        <form
+          method="POST"
+          action="{{ url_for('request_reset_post') }}"
+          novalidate
+        >
           {{ form.hidden_tag() }}
 
           <div class="mb-3">
@@ -41,10 +45,13 @@
             {% endfor %}
           </div>
 
-          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and hcaptcha_site_key %}
-          <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
-          <script src="https://hcaptcha.com/1/api.js" async defer></script>
-        {% endif %}
+          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
+          hcaptcha_site_key %}
+          <div class="mb-3 text-center">
+            <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
+            <script src="https://hcaptcha.com/1/api.js" async defer></script>
+          </div>
+          {% endif %}
 
           <button type="submit" id="resetBtn" class="btn btn-primary">
             Send Reset Link

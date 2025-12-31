@@ -1,10 +1,113 @@
-<h2>New Contact Message</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>New Contact Message</title>
+    <style>
+        /* Base styles for responsiveness */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f4f4f7;
+            color: #51545E;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .content-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+            overflow: hidden;
+        }
+        .header {
+            border-bottom: 1px solid #eaeaec;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .header h2 {
+            margin: 0;
+            color: #333333;
+            font-size: 24px;
+        }
+        .details-row {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .label {
+            font-weight: bold;
+            color: #333333;
+            display: inline-block;
+            width: 80px;
+        }
+        .message-box {
+            background-color: #f9f9f9;
+            border-left: 4px solid #007bff; /* Blue accent border */
+            padding: 15px 20px;
+            margin-top: 25px;
+            border-radius: 4px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #a8aaaf;
+            margin-top: 20px;
+        }
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
 
-<p><strong>Name:</strong> {{ name }}</p>
-<p><strong>Email:</strong> {{ email }}</p>
-<p><strong>Phone:</strong> {{ phone }}</p>
+    <div class="container">
+        <div class="content-card">
+            
+            <div class="header">
+                <h2>New Contact Message</h2>
+            </div>
 
-<hr>
+            <div class="details-row">
+                <span class="label">Name:</span>
+                <span>{{ name }}</span>
+            </div>
 
-<p><strong>Message:</strong></p>
-<p>{{ message }}</p>
+            <div class="details-row">
+                <span class="label">Email:</span>
+                <span><a href="mailto:{{ email }}">{{ email }}</a></span>
+            </div>
+
+            <div class="details-row">
+                <span class="label">Phone:</span>
+                <span>{{ phone }}</span>
+            </div>
+
+            <div class="message-box">
+                <strong>Message:</strong><br><br>
+                {{ message }}
+            </div>
+
+            <div style="margin-top: 30px; text-align: center;">
+                <a href="mailto:{{ email }}?subject=Re: Your Contact Request" 
+                   style="background-color: #007bff; color: white; padding: 12px 25px; border-radius: 5px; text-decoration: none; font-weight: bold;">
+                   Reply to {{ name }}
+                </a>
+            </div>
+
+        </div>
+
+        <div class="footer">
+            <p>Sent from your website contact form.</p>
+        </div>
+    </div>
+
+</body>
+</html>

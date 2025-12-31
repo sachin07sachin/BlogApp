@@ -47,7 +47,8 @@
 
           <div class="mb-3">
             {{ resend_form.email.label(class="form-label") }} {{
-            resend_form.email(class="form-control", placeholder="Enter your email") }} {% if resend_form.email.errors %}
+            resend_form.email(class="form-control", placeholder="Enter your
+            email") }} {% if resend_form.email.errors %}
             <div class="text-danger">
               {% for error in resend_form.email.errors %}
               <small>{{ error }}</small>
@@ -56,10 +57,13 @@
             {% endif %}
           </div>
 
-          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and hcaptcha_site_key %}
-          <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
-          <script src="https://hcaptcha.com/1/api.js" async defer></script>
-        {% endif %}
+          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
+          hcaptcha_site_key %}
+          <div class="mb-3 text-center">
+            <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
+            <script src="https://hcaptcha.com/1/api.js" async defer></script>
+          </div>
+          {% endif %}
 
           <button type="submit" id="resendBtn" class="btn btn-primary">
             Resend Verification Email

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Reset Your Password</title>
+    <title>You already have an account</title>
     <style>
         body {
             margin: 0;
@@ -25,23 +25,28 @@
         }
         .btn {
             display: inline-block;
-            background-color: #007bff; /* Blue */
+            background-color: #007bff; /* Primary Blue */
             color: #ffffff;
             text-decoration: none;
             padding: 12px 30px;
             border-radius: 5px;
             font-weight: bold;
-            margin: 25px 0;
+            margin: 20px 0;
             font-size: 16px;
         }
         .btn:hover {
             background-color: #0056b3;
         }
-        .warning-text {
-            color: #888;
+        .info-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .secondary-link {
             font-size: 14px;
-            margin-top: 20px;
-            line-height: 1.5;
+            color: #007bff;
+            text-decoration: none;
         }
         .footer {
             text-align: center;
@@ -50,11 +55,6 @@
             margin-top: 20px;
             line-height: 1.5;
         }
-        .fallback-link {
-            font-size: 12px;
-            color: #007bff;
-            word-break: break-all;
-        }
     </style>
 </head>
 <body>
@@ -62,26 +62,24 @@
     <div class="container">
         <div class="content-card">
             
-            <h2 style="color: #333; margin-top: 0;">Reset Your Password</h2>
+            <h2 style="color: #333; margin-top: 0;">Account Exists</h2>
             
-            <p style="font-size: 16px; line-height: 1.6;">Hello {{ user.name }},</p>
+            <p class="info-text">Hello {{ name }},</p>
             
-            <p style="font-size: 16px; line-height: 1.6;">
-                We received a request to reset the password for your account. 
-                Click the button below to proceed.
+            <p class="info-text">
+                We received a request to create a new account with this email address.
+                <strong>Good news! You are already registered.</strong>
             </p>
 
-            <a href="{{ reset_url }}" class="btn">Reset Password</a>
+            <a href="{{ login_url }}" class="btn">Log In Here</a>
 
-            <div class="warning-text">
-                <p>This link will expire in <strong>30 minutes</strong>.</p>
-                <p>If you did not make this request, simply ignore this email.</p>
-            </div>
+            <p style="margin-top: 30px; font-size: 14px; color: #666;">
+                Forgot your password? <a href="{{ reset_url }}" class="secondary-link">Reset it here</a>.
+            </p>
 
             <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
             <p style="font-size: 12px; color: #999;">
-                Button not working? Copy link:<br>
-                <a href="{{ reset_url }}" class="fallback-link">{{ reset_url }}</a>
+                If you did not attempt to register, you can safely ignore this email.
             </p>
 
         </div>
