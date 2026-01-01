@@ -1013,6 +1013,10 @@ def contact():
     # 3. Exception caught above (POST) -> 'form' contains input data
     return render_template("contact.html", form=form)
 
+@app.route("/health")
+def health():
+    return "OK", 200
+
 
 if __name__ == "__main__":
     app.run(
