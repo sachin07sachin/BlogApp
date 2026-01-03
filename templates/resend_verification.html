@@ -47,8 +47,7 @@
 
           <div class="mb-3">
             {{ resend_form.email.label(class="form-label") }} {{
-            resend_form.email(class="form-control", placeholder="Enter your
-            email") }} {% if resend_form.email.errors %}
+            resend_form.email(class="form-control", placeholder="Enter your " ~ "email") }} {% if resend_form.email.errors %}
             <div class="text-danger">
               {% for error in resend_form.email.errors %}
               <small>{{ error }}</small>

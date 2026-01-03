@@ -990,10 +990,12 @@ def contact():
                 message=form.message.data
             )
             
+            # --- UPDATE: Passing 'reply_to' ---
             send_email(
                 to=os.environ["CONTACT_RECEIVER_EMAIL"],
                 subject="New Contact Form Message",
-                html_body=html_body
+                html_body=html_body,
+                reply_to=form.email.data  # <--- This allows to reply to the user directly
             )
 
             # SUCCESS: Flash message and REDIRECT.
@@ -1003,7 +1005,6 @@ def contact():
 
         except Exception as e:
             # FAILURE (SMTP): Flash error and allow code to fall through to render_template.
-            # Because we didn't redirect, the 'form' object still holds the user's data.
             logger.exception("Contact email failed")
             flash("Failed to send message. Please try again later.", "danger")
     
