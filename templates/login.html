@@ -1,8 +1,7 @@
-{% extends "base.html" %} {% block header %}
-<header
-  class="masthead"
-  style="background-image: url('{{ url_for('static', filename='assets/img/login-bg.jpg') }}')"
->
+{% extends "base.html" %} 
+
+{% block header %}
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/login-bg.jpg') }}')">
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -14,26 +13,23 @@
     </div>
   </div>
 </header>
-{% endblock %} {% block content %}
+{% endblock %} 
+
+{% block content %}
 <main class="mb-4">
   <div class="container">
     <div class="row justify-content-center">
-      <!-- Flash Messages -->
       <div class="col-lg-8 col-md-10">
-        {% with messages = get_flashed_messages(with_categories=true) %} {% if
-        messages %} {% for category, message in messages %}
-        <div
-          class="alert alert-{{ category }} alert-dismissible fade show"
-          role="alert"
-        >
-          {{ message }}
-          <button
-            type="button"
-            class="btn-close"
-            data-bs-dismiss="alert"
-          ></button>
-        </div>
-        {% endfor %} {% endif %} {% endwith %}
+        {% with messages = get_flashed_messages(with_categories=true) %} 
+          {% if messages %} 
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %} 
+          {% endif %} 
+        {% endwith %}
       </div>
 
       <div class="col-lg-8 col-md-10 mx-auto">
@@ -41,9 +37,9 @@
           {{ login_form.hidden_tag() }}
 
           <div class="mb-3">
-            {{ login_form.email.label(class="form-label") }} {{
-            login_form.email(class="form-control", placeholder="Enter your " ~
-            "email") }} {% if login_form.email.errors %}
+            {{ login_form.email.label(class="form-label") }} 
+            {{ login_form.email(class="form-control", placeholder="Enter your email") }} 
+            {% if login_form.email.errors %}
             <div class="text-danger">
               {% for error in login_form.email.errors %}
               <small>{{ error }}</small>
@@ -53,9 +49,14 @@
           </div>
 
           <div class="mb-3">
-            {{ login_form.password.label(class="form-label") }} {{
-            login_form.password(class="form-control", placeholder="Enter your "
-            ~ "password") }} {% if login_form.password.errors %}
+            {{ login_form.password.label(class="form-label") }}
+            <div class="input-group">
+                {{ login_form.password(class="form-control", id="password-field", placeholder="Enter your password") }}
+                <button class="btn btn-outline-secondary" type="button" id="btn-toggle-password">
+                    <i class="bi bi-eye" id="eye-icon"></i>
+                </button>
+            </div>
+            {% if login_form.password.errors %}
             <div class="text-danger">
               {% for error in login_form.password.errors %}
               <small>{{ error }}</small>
@@ -64,46 +65,57 @@
             {% endif %}
           </div>
 
-          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
-          hcaptcha_site_key %}
+          {# 🔐 CAPTCHA — only when required #} 
+          {% if captcha_required and hcaptcha_site_key %}
           <div class="mb-3 text-center">
             <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
             <script src="https://hcaptcha.com/1/api.js" async defer></script>
           </div>
           {% endif %}
 
-          <button type="submit" id="loginBtn" class="btn btn-primary">
-            Log In
-          </button>
+          <button type="submit" id="loginBtn" class="btn btn-primary">Log In</button>
         </form>
       </div>
 
       <div class="mt-4 text-center">
         <p class="small text-muted mb-1">
-          <a
-            href="{{ url_for('request_reset_get') }}"
-            class="text-decoration-none"
-            >Forgot Password?</a
-          >
+          <a href="{{ url_for('request_reset_get') }}" class="text-decoration-none">Forgot Password?</a>
         </p>
         <p class="small text-muted mb-1">
           Don't have an account?
-          <a
-            href="{{ url_for('register') }}"
-            class="text-decoration-none fw-bold"
-            >Register</a
-          >
+          <a href="{{ url_for('register') }}" class="text-decoration-none fw-bold">Register</a>
         </p>
         <p class="small text-muted">
           Need to verify email?
-          <a
-            href="{{ url_for('resend_verification_get') }}"
-            class="text-decoration-none"
-            >Resend Link</a
-          >
+          <a href="{{ url_for('resend_verification_get') }}" class="text-decoration-none">Resend Link</a>
         </p>
       </div>
     </div>
   </div>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Logic for Single Password Field
+    const toggleBtn = document.getElementById('btn-toggle-password');
+    const passField = document.getElementById('password-field');
+    const eyeIcon = document.getElementById('eye-icon');
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            const type = passField.getAttribute('type') === 'password' ? 'text' : 'password';
+            passField.setAttribute('type', type);
+            
+            // Toggle Icon Class
+            if (type === 'text') {
+                eyeIcon.classList.remove('bi-eye');
+                eyeIcon.classList.add('bi-eye-slash');
+            } else {
+                eyeIcon.classList.remove('bi-eye-slash');
+                eyeIcon.classList.add('bi-eye');
+            }
+        });
+    }
+</script>
 {% endblock %}
