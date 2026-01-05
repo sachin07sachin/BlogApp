@@ -2,6 +2,10 @@ import os
 import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from threading import Thread
+
+# Third-Party Imports
+import click
 from dotenv import load_dotenv
 from flask import (
     Flask, abort, render_template, redirect,
@@ -11,98 +15,110 @@ from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
 from flask_ckeditor.utils import cleanify
 from flask_gravatar import Gravatar
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
 from flask_login import (
     UserMixin, login_user, LoginManager,
     current_user, logout_user, login_required
 )
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, text
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.middleware.proxy_fix import ProxyFix
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from flask_migrate import Migrate
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_limiter.errors import RateLimitExceeded
-import click
-from threading import Thread
+from sqlalchemy import Integer, String, Text, Boolean, DateTime, text
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Local Imports
 from forms import (
     CreatePostForm, RegisterForm, LoginForm,
-    CommentForm, ResendVerificationForm, ContactForm, RequestResetForm, ResetPasswordForm
+    CommentForm, ResendVerificationForm, ContactForm, 
+    RequestResetForm, ResetPasswordForm
 )
-from utils.email import send_email
+from utils.email import send_email 
 from utils.captcha import verify_hcaptcha
 
 # -------------------------------------------------------------------
+# 1. CONFIGURATION & ENVIRONMENT SETUP
+# -------------------------------------------------------------------
 
+# Load environment variables
 load_dotenv()
-if not os.environ.get("SECRET_KEY"):
-    raise RuntimeError("SECRET_KEY not set")
 
-if not os.environ.get("DATABASE_URL"):
-    raise RuntimeError("DATABASE_URL not set")
+# VALIDATION: Ensure critical environment variables are set
+REQUIRED_ENV_VARS = [
+    "SECRET_KEY", "DATABASE_URL", "EMAIL_SECRET_KEY", 
+    "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD"
+]
+missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
+if missing_vars:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
+# Initialize Flask App
 app = Flask(__name__)
 
+# Security: CSRF Protection
 csrf = CSRFProtect(app)
 
-app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=os.environ.get("ENV") == "production"
-)
-
-
-# Production Proxy Fix (for Nginx/Heroku/Render)
+# Security: Proxy Fix (Required for Render/Heroku/Nginx)
 if os.environ.get("ENV") == "production":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
-app.config["EMAIL_TOKEN_SALT"] = os.environ.get("EMAIL_TOKEN_SALT", "email-confirm-salt")
-app.config["EMAIL_TOKEN_EXPIRES"] = int(os.environ.get("EMAIL_TOKEN_EXPIRES", 3600))
-
-# Password Reset Config
-app.config["PASSWORD_RESET_SALT"] = os.environ.get(
-    "PASSWORD_RESET_SALT", "password-reset-salt"
+# Application Configuration
+app.config.update(
+    SECRET_KEY=os.environ["SECRET_KEY"],
+    
+    # Session Security
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(os.environ.get("ENV") == "production"),
+    
+    # Email Tokens
+    EMAIL_SECRET_KEY=os.environ["EMAIL_SECRET_KEY"],
+    EMAIL_TOKEN_SALT=os.environ.get("EMAIL_TOKEN_SALT", "email-confirm-salt"),
+    EMAIL_TOKEN_EXPIRES=int(os.environ.get("EMAIL_TOKEN_EXPIRES", 3600)),
+    
+    # Password Reset
+    PASSWORD_RESET_SALT=os.environ.get("PASSWORD_RESET_SALT", "password-reset-salt"),
+    PASSWORD_RESET_EXPIRES=int(os.environ.get("PASSWORD_RESET_EXPIRES", 1800)), # 30 mins
+    
+    # CAPTCHA Config
+    CAPTCHA_ENABLED=(os.environ.get("ENABLE_CAPTCHA", "false").lower() == "true"),
+    HCAPTCHA_SITE_KEY=os.environ.get("HCAPTCHA_SITE_KEY"),
+    HCAPTCHA_SECRET_KEY=os.environ.get("HCAPTCHA_SECRET_KEY"),
+    
+    # Database Config
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
-app.config["PASSWORD_RESET_EXPIRES"] = int(
-    os.environ.get("PASSWORD_RESET_EXPIRES", 1800)  # 30 minutes
-)
 
-# -------------------------------------------------
-# CAPTCHA GLOBAL SWITCH
-# -------------------------------------------------
-app.config["CAPTCHA_ENABLED"] = (
-    os.environ.get("ENABLE_CAPTCHA", "false").lower() == "true"
-)
-
-# -------------------------------------------------
-# hCaptcha Configuration
-# -------------------------------------------------
-if app.config["CAPTCHA_ENABLED"]:
-    app.config["HCAPTCHA_SITE_KEY"] = os.environ["HCAPTCHA_SITE_KEY"]
-    app.config["HCAPTCHA_SECRET_KEY"] = os.environ["HCAPTCHA_SECRET_KEY"]
-else:
-    app.config["HCAPTCHA_SITE_KEY"] = None
-    app.config["HCAPTCHA_SECRET_KEY"] = None
-
-# Database Config (Fix for Postgres on some platforms)
-uri = os.environ.get("DATABASE_URL")
+# Database URI Fix (Postgres/Render compatibility)
+uri = os.environ["DATABASE_URL"]
 if uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = uri
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize Extensions
 ckeditor = CKEditor(app)
 bootstrap = Bootstrap5(app)
 
 # -------------------------------------------------------------------
-# DATABASE SETUP
+# 2. LOGGING & EXTENSIONS SETUP
+# -------------------------------------------------------------------
 
+# Logging Configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+if os.environ.get("ENV") == "production":
+    logging.getLogger().setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
+
+# Initialize Database
 class Base(DeclarativeBase):
     pass
 
@@ -117,154 +133,22 @@ db = SQLAlchemy(
 )
 db.init_app(app)
 
-@app.teardown_appcontext
-def shutdown_session(exception=None):
-    db.session.remove()
-
+# Initialize Migration Engine
 migrate = Migrate(app, db)
 
-# -------------------------------------------------------------------
-# LOGIN & RATE LIMITING
-
+# Initialize Login Manager
 login_manager = LoginManager()
 login_manager.login_view = "login_get"
 login_manager.login_message = "Please log in to access this page."
 login_manager.init_app(app)
 
-# -------------------------------------------------------------------------
-# 1. Configuration & Constants
-# -------------------------------------------------------------------------
-# Rate Limit Strings
-RATE_LIMIT_LOGIN_GLOBAL = "60 per hour"     # IP only (stops mass scanning)
-RATE_LIMIT_LOGIN_SPECIFIC = "10 per minute"  # IP + Email (stops brute force on specific user)
-
-# Rate limits for email-based flows
-RATE_LIMIT_EMAIL_GLOBAL = "20 per hour"      # Per IP
-RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"     # Per IP + Email
-
-# Account Lockout Settings
-MAX_LOGIN_ATTEMPTS = 5
-
-# Security: Timing Attack Protection
-DUMMY_PASSWORD_HASH = generate_password_hash("dummy_password_for_timing_protection")
-
-# -------------------------------------------------------------------------
-# Logging Configuration
-# -------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-
-if os.environ.get("ENV") == "production":
-    logging.getLogger().setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
-
-# -------------------------------------------------------------------------
-# 2. Rate Limiting Setup
-# -------------------------------------------------------------------------
-def login_rate_limit_key():
-    """
-    Rate limit by IP + Email.
-    Used for the 'Specific' limit to prevent hammering a single account.
-    """
-    ip = get_remote_address()
-    # Safely get email, default to 'unknown' so a key is always generated
-    email = request.form.get("email", "unknown").lower().strip()
-    return f"{ip}:{email}"
-
-def email_rate_limit_key():
-    ip = get_remote_address()
-    email = request.form.get("email", "unknown").lower().strip()
-    return f"{ip}:{email}"
-
-redis_url = os.environ.get("REDIS_URL")
-if not redis_url:
-    raise RuntimeError("REDIS_URL environment variable not set")
-
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    storage_uri = redis_url if redis_url else "memory://",
-    default_limits=[], # Explicitly empty to prevent global limits affecting static assets
-    strategy="sliding-window-counter"
-)
-
-@app.errorhandler(CSRFError)
-def handle_csrf_error(e):
-    flash("Your session expired. Please try again.", "warning")
-    return redirect(request.referrer or url_for("login_get"))
-
-
-@app.errorhandler(RateLimitExceeded)
-def handle_rate_limit(e):
-    """
-    Generic rate limit handler.
-    Escalates to CAPTCHA instead of exposing timing.
-    """
-
-    if app.config["CAPTCHA_ENABLED"]:
-        session["captcha_required"] = True
-
-    logger.warning(
-        f"Rate limit exceeded ({e.description}) "
-        f"IP={get_remote_address()} "
-        f"email={request.form.get('email', 'unknown')}"
-    )
-
-    flash(
-        "Too many requests detected. Please verify you are human.",
-        "danger"
-    )
-
-    endpoint = request.endpoint
-
-    if endpoint == "login_post":
-        form = LoginForm()
-        template = "login.html"
-        context = {"login_form": form}
-
-    elif endpoint == "resend_verification_post":
-        form = ResendVerificationForm()
-        template = "resend_verification.html"
-        context = {"resend_form": form}
-
-    elif endpoint == "request_reset_post":
-        form = RequestResetForm()
-        template = "request_reset.html"
-        context = {"form": form}
-
-    else:
-        return redirect(url_for("login_get"))
-
-    if request.method == "POST":
-        form.process(request.form)
-
-    return render_template(
-        template,
-        captcha_required=(
-            app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")
-        ),
-        hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
-        **context
-    ), 429
-
-
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-@app.after_request
-def add_security_headers(response):
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin"
-    response.headers["Permissions-Policy"] = "geolocation=()"
-    return response
-
 # -------------------------------------------------------------------
-# MODELS
+# 3. DATABASE MODELS
+# -------------------------------------------------------------------
 
 class User(UserMixin, db.Model):
     __tablename__ = "users"
@@ -274,12 +158,13 @@ class User(UserMixin, db.Model):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user", server_default="user")
     
+    # Verification & Security Fields
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reset_password_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
+    # Relationships
     posts = relationship("BlogPost", back_populates="author", passive_deletes=True)
     comments = relationship("Comment", back_populates="comment_author", passive_deletes=True)
 
@@ -294,8 +179,8 @@ class BlogPost(db.Model):
     title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
     subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
     date: Mapped[datetime] = mapped_column(
-    DateTime(timezone=True),
-    default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
@@ -315,7 +200,8 @@ class Comment(db.Model):
     parent_post = relationship("BlogPost", back_populates="comments")
 
 # -------------------------------------------------------------------
-# HELPERS & DECORATORS
+# 4. CORE DECORATORS & CLI
+# -------------------------------------------------------------------
 
 gravatar = Gravatar(app, size=100, rating="g", default="retro", use_ssl=True)
 
@@ -329,75 +215,6 @@ def admin_only(f):
         return f(*args, **kwargs)
     return wrapper
 
-
-if not os.environ.get("EMAIL_SECRET_KEY"):
-    raise RuntimeError("EMAIL_SECRET_KEY not set")
-
-app.config["EMAIL_SECRET_KEY"] = os.environ["EMAIL_SECRET_KEY"]
-
-def _get_serializer():
-    return URLSafeTimedSerializer(app.config["EMAIL_SECRET_KEY"])
-
-def generate_email_token(user_id: int) -> str:
-    """
-    Generates an email verification token.
-    Includes issued-at (iat) to invalidate older tokens.
-    """
-    return _get_serializer().dumps(
-        {
-            "user_id": str(user_id),
-            "iat": int(datetime.now(timezone.utc).timestamp())
-        },
-        salt=app.config["EMAIL_TOKEN_SALT"]
-    )
-
-
-def confirm_email_token(token: str):
-    """
-    Confirms email verification token.
-    Verifies signature, expiry, and returns payload.
-    """
-    try:
-        return _get_serializer().loads(
-            token,
-            salt=app.config["EMAIL_TOKEN_SALT"],
-            max_age=app.config["EMAIL_TOKEN_EXPIRES"]
-        )
-    except (SignatureExpired, BadSignature):
-        return None
-    
-def generate_password_reset_token(user_id: int) -> str:
-    """
-    Generates a password reset token.
-    Includes issued-at (iat) to invalidate older tokens.
-    """
-    return _get_serializer().dumps(
-        {
-            "user_id": str(user_id),
-            "iat": int(datetime.now(timezone.utc).timestamp())
-        },
-        salt=app.config["PASSWORD_RESET_SALT"]
-    )
-
-
-def confirm_password_reset_token(token: str):
-    """
-    Confirms password reset token.
-    Verifies signature, expiry, and returns payload.
-    """
-    try:
-        return _get_serializer().loads(
-            token,
-            salt=app.config["PASSWORD_RESET_SALT"],
-            max_age=app.config["PASSWORD_RESET_EXPIRES"]
-        )
-    except (SignatureExpired, BadSignature):
-        return None
-
-
-# -------------------------------------------------------------------
-# CLI COMMANDS
-
 @app.cli.command("create-admin")
 @click.argument("email")
 def create_admin(email):
@@ -410,13 +227,187 @@ def create_admin(email):
     else:
         print(f"User {email} not found.")
 
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db.session.remove()
+
 # -------------------------------------------------------------------
-# AUTH ROUTES
+# 5. RATE LIMITING & SECURITY HELPERS
+# -------------------------------------------------------------------
+
+# Initialize Rate Limiter
+redis_url = os.environ.get("REDIS_URL")
+if not redis_url:
+    raise RuntimeError("REDIS_URL environment variable not set")
+
+def login_rate_limit_key():
+    """Rate limit key: IP + Email (Prevents brute force on specific user)"""
+    ip = get_remote_address()
+    email = request.form.get("email", "unknown").lower().strip()
+    return f"{ip}:{email}"
+
+def email_rate_limit_key():
+    """Rate limit key: IP + Email (For verification/reset flows)"""
+    ip = get_remote_address()
+    email = request.form.get("email", "unknown").lower().strip()
+    return f"{ip}:{email}"
+
+# --- FIX: LOOP OF DEATH (Rate Limit Bypass) ---
+def match_captcha_bypass():
+    """
+    Tells Flask-Limiter to SKIP the rate limit check if the user
+    has submitted a Captcha response in the form.
+    This prevents the user from being blocked immediately after solving the CAPTCHA.
+    """
+    return request.form.get("h-captcha-response") is not None
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    storage_uri=redis_url,
+    default_limits=[], 
+    strategy="sliding-window-counter"
+)
+
+# Constants
+RATE_LIMIT_LOGIN_GLOBAL = "60 per hour"
+RATE_LIMIT_LOGIN_SPECIFIC = "10 per minute"
+RATE_LIMIT_EMAIL_GLOBAL = "20 per hour"
+RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"
+MAX_LOGIN_ATTEMPTS = 5
+DUMMY_PASSWORD_HASH = generate_password_hash("dummy_password_for_timing_protection")
+
+# -------------------------------------------------------------------
+# 6. TOKEN & SECURITY UTILITIES
+# -------------------------------------------------------------------
+
+def _get_serializer():
+    return URLSafeTimedSerializer(app.config["EMAIL_SECRET_KEY"])
+
+# --- FIX: TIMESTAMP PRECISION ---
+# We now accept the datetime object directly to ensure it matches the DB.
+def generate_email_token(user_id: int, timestamp: datetime) -> str:
+    """
+    Generates verification token using a specific datetime object.
+    Converts to integer timestamp (IAT) for the token payload.
+    """
+    return _get_serializer().dumps(
+        {
+            "user_id": str(user_id),
+            "iat": int(timestamp.timestamp())
+        },
+        salt=app.config["EMAIL_TOKEN_SALT"]
+    )
+
+def confirm_email_token(token: str):
+    try:
+        return _get_serializer().loads(
+            token,
+            salt=app.config["EMAIL_TOKEN_SALT"],
+            max_age=app.config["EMAIL_TOKEN_EXPIRES"]
+        )
+    except (SignatureExpired, BadSignature):
+        return None
+
+def generate_password_reset_token(user_id: int, timestamp: datetime) -> str:
+    """
+    Generates reset token using a specific datetime object.
+    """
+    return _get_serializer().dumps(
+        {
+            "user_id": str(user_id),
+            "iat": int(timestamp.timestamp())
+        },
+        salt=app.config["PASSWORD_RESET_SALT"]
+    )
+
+def confirm_password_reset_token(token: str):
+    try:
+        return _get_serializer().loads(
+            token,
+            salt=app.config["PASSWORD_RESET_SALT"],
+            max_age=app.config["PASSWORD_RESET_EXPIRES"]
+        )
+    except (SignatureExpired, BadSignature):
+        return None
+
+# -------------------------------------------------------------------
+# 7. GLOBAL ERROR HANDLERS
+# -------------------------------------------------------------------
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash("Your session expired. Please try again.", "warning")
+    return redirect(request.referrer or url_for("login_get"))
+
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit(e):
+    """
+    Escalates to CAPTCHA instead of blocking entirely.
+    Renders the specific template so the user can actually SOLVE the CAPTCHA.
+    """
+    if app.config["CAPTCHA_ENABLED"]:
+        session["captcha_required"] = True
+
+    logger.warning(
+        f"Rate limit exceeded ({e.description}) "
+        f"IP={get_remote_address()} "
+        f"email={request.form.get('email', 'unknown')}"
+    )
+    
+    flash("Too many requests detected. Please verify you are human.", "danger")
+
+    # Determine context to render correct template
+    endpoint = request.endpoint
+    
+    if endpoint == "login_post":
+        return render_template(
+            "login.html", 
+            login_form=LoginForm(), 
+            captcha_required=True,
+            hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+        ), 429
+
+    elif endpoint == "resend_verification_post":
+        return render_template(
+            "resend_verification.html", 
+            resend_form=ResendVerificationForm(),
+            captcha_required=True,
+            hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+        ), 429
+
+    elif endpoint == "request_reset_post":
+        return render_template(
+            "request_reset.html", 
+            form=RequestResetForm(),
+            captcha_required=True,
+            hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+        ), 429
+
+    return redirect(url_for("login_get"))
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin"
+    response.headers["Permissions-Policy"] = "geolocation=()"
+    return response
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
+# -------------------------------------------------------------------
+# 8. AUTHENTICATION ROUTES
+# -------------------------------------------------------------------
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     form = RegisterForm()
-    now = datetime.now(timezone.utc)
+    # FIX: Single Source of Truth (Microseconds stripped)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
 
     if form.validate_on_submit():
         email = form.email.data.lower().strip()
@@ -459,14 +450,16 @@ def register():
                     salt_length=16
                 ),
                 name=form.name.data,
-                verification_sent_at=now
+                verification_sent_at=now # <--- Uses the clean 'now'
             )
 
             db.session.add(new_user)
             db.session.commit()
 
             # Send "Verify Email" link
-            token = generate_email_token(new_user.id)
+            # FIX: Pass 'now' to generate_email_token
+            token = generate_email_token(new_user.id, now)
+            
             verify_url = url_for(
                 "verify_email",
                 token=token,
@@ -509,6 +502,7 @@ def verify_email(token):
     )
 
     # Invalidate older verification links
+    # FIX: Clean comparison (no subtraction needed because we stripped microseconds)
     if (
         user.verification_sent_at
         and token_issued_at < user.verification_sent_at
@@ -532,7 +526,11 @@ def verify_email(token):
     flash("Email verified successfully! Please log in.", "success")
     return redirect(url_for("login_get"))
 
-# ------
+
+# -------------------------------------------------------------------
+# RESEND VERIFICATION
+# -------------------------------------------------------------------
+
 @app.route("/resend-verification", methods=["GET"])
 def resend_verification_get():
     resend_form = ResendVerificationForm()
@@ -547,11 +545,12 @@ def resend_verification_get():
     )
 
 @app.route("/resend-verification", methods=["POST"])
-@limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
-@limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
+@limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address, exempt_when=match_captcha_bypass) # FIX: Added exempt
+@limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key, exempt_when=match_captcha_bypass) # FIX: Added exempt
 def resend_verification_post():
     resend_form = ResendVerificationForm()
-    now = datetime.now(timezone.utc)
+    # FIX: Single Source of Truth
+    now = datetime.now(timezone.utc).replace(microsecond=0)
 
     # HELPER: Re-render to preserve input on failure
     def render_failure():
@@ -592,9 +591,10 @@ def resend_verification_post():
     )
 
     # If user exists (verified OR unverified), send the link.
-    # This relies on verify_email route to handle the "Already Verified" case.
     if user:
-        token = generate_email_token(user.id)
+        # FIX: Pass 'now'
+        token = generate_email_token(user.id, now)
+        
         verify_url = url_for(
             "verify_email",
             token=token,
@@ -615,7 +615,7 @@ def resend_verification_post():
             )
         ).start()
 
-        # Update timestamp (Security against replay attacks)
+        # Update timestamp
         user.verification_sent_at = now
         db.session.commit()
 
@@ -625,7 +625,10 @@ def resend_verification_post():
     return redirect(url_for("resend_verification_get"))
 
 
-# ----------
+# -------------------------------------------------------------------
+# PASSWORD RESET FLOW
+# -------------------------------------------------------------------
+
 @app.route("/request-reset", methods=["GET"])
 def request_reset_get():
     form = RequestResetForm()
@@ -640,11 +643,12 @@ def request_reset_get():
     )
 
 @app.route("/request-reset", methods=["POST"])
-@limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address)
-@limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key)
+@limiter.limit(RATE_LIMIT_EMAIL_GLOBAL, key_func=get_remote_address, exempt_when=match_captcha_bypass) # FIX: Added exempt
+@limiter.limit(RATE_LIMIT_EMAIL_SPECIFIC, key_func=email_rate_limit_key, exempt_when=match_captcha_bypass) # FIX: Added exempt
 def request_reset_post():
     form = RequestResetForm()
-    now = datetime.now(timezone.utc)
+    # FIX: Single Source of Truth
+    now = datetime.now(timezone.utc).replace(microsecond=0)
 
     # HELPER: Re-render to preserve input on failure
     def render_failure():
@@ -685,7 +689,9 @@ def request_reset_post():
     )
 
     if user:
-        token = generate_password_reset_token(user.id)
+        # FIX: Pass 'now'
+        token = generate_password_reset_token(user.id, now)
+        
         reset_url = url_for(
             "reset_password",
             token=token,
@@ -699,7 +705,7 @@ def request_reset_post():
             user=user
         )
 
-        # THREADING: Send in background (Prevents Timing Attack)
+        # THREADING: Send in background
         Thread(
             target=send_email, 
             args=(user.email, subject, html_body)
@@ -712,8 +718,6 @@ def request_reset_post():
     session.pop("captcha_required", None)
 
     return redirect(url_for("request_reset_get"))
-
-# ----------
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
@@ -733,6 +737,7 @@ def reset_password(token):
     )
 
     # Invalidate older reset links immediately
+    # FIX: Clean comparison
     if (
         user.reset_password_sent_at
         and token_issued_at < user.reset_password_sent_at
@@ -771,9 +776,11 @@ def reset_password(token):
 
     return render_template("reset_password.html", form=form)
 
-# -------------------------------------------------------------------------
-# Login Route
-# ------------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# LOGIN ROUTES
+# -------------------------------------------------------------------
+
 @app.route("/login", methods=["GET"])
 def login_get():
     form = LoginForm()
@@ -789,14 +796,13 @@ def login_get():
 
 @app.route("/login", methods=["POST"])
 # Layer 1: Global IP Protection
-@limiter.limit(RATE_LIMIT_LOGIN_GLOBAL, key_func=get_remote_address)
+@limiter.limit(RATE_LIMIT_LOGIN_GLOBAL, key_func=get_remote_address, exempt_when=match_captcha_bypass) # FIX: Added exempt
 # Layer 2: Specific Account Protection
-@limiter.limit(RATE_LIMIT_LOGIN_SPECIFIC, key_func=login_rate_limit_key)
+@limiter.limit(RATE_LIMIT_LOGIN_SPECIFIC, key_func=login_rate_limit_key, exempt_when=match_captcha_bypass) # FIX: Added exempt
 def login_post():
     form = LoginForm()
     
     # HELPER: This function re-renders the page with the user's data + errors.
-    # We use this instead of redirecting to prevent data loss.
     def render_login_failure():
         return render_template(
             "login.html",
@@ -807,16 +813,11 @@ def login_post():
             hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"],
         )
 
-    # -------------------------------------------------
     # Form Validation Check
-    # -------------------------------------------------
-    # If the form is invalid (bad email format, missing fields), show errors.
     if not form.validate_on_submit():
         return render_login_failure()
 
-    # -------------------------------------------------
     # CAPTCHA CHECK
-    # -------------------------------------------------
     if (
         app.config["CAPTCHA_ENABLED"]
         and session.get("captcha_required")
@@ -836,9 +837,7 @@ def login_post():
         db.select(User).where(User.email == email)
     )
 
-    # -------------------------------------------------
     # Credential Validation (Timing-safe)
-    # -------------------------------------------------
     valid_password = False
     if user:
         valid_password = check_password_hash(user.password, password)
@@ -846,9 +845,7 @@ def login_post():
         # Timing attack protection
         check_password_hash(DUMMY_PASSWORD_HASH, password)
 
-    # -------------------------------------------------
     # Handle Failure
-    # -------------------------------------------------
     if not user or not valid_password:
         if user:
             user.failed_login_count += 1
@@ -868,11 +865,9 @@ def login_post():
             db.session.commit()
 
         flash("Invalid email or password.", "danger")
-        return render_login_failure() # <--- Keeps email in the box!
+        return render_login_failure()
 
-    # -------------------------------------------------
     # Handle Success
-    # -------------------------------------------------
     user.failed_login_count = 0
     db.session.commit()
 
@@ -889,21 +884,16 @@ def login_post():
 
     return redirect(url_for("get_all_posts"))
 
-# ------------------------------------------
-
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
-
-    # Clear security-related session state
     session.pop("captcha_required", None)
-    # session.pop("captcha_passed_at", None)
-
     return redirect(url_for("get_all_posts"))
 
 # -------------------------------------------------------------------
-# BLOG ROUTES
+# 9. BLOG ROUTES
+# -------------------------------------------------------------------
 
 @app.route("/")
 def get_all_posts():
@@ -972,6 +962,10 @@ def delete_post(post_id):
     db.session.commit()
     return redirect(url_for("get_all_posts"))
 
+# -------------------------------------------------------------------
+# 10. STATIC PAGES & CONTACT
+# -------------------------------------------------------------------
+
 @app.route("/about")
 def about():
     return render_template("about.html")
@@ -990,34 +984,27 @@ def contact():
                 message=form.message.data
             )
             
-            # --- UPDATE: Passing 'reply_to' ---
+            # Use environment variable for receiver
             send_email(
                 to=os.environ["CONTACT_RECEIVER_EMAIL"],
                 subject="New Contact Form Message",
                 html_body=html_body,
-                reply_to=form.email.data  # <--- This allows to reply to the user directly
+                reply_to=form.email.data 
             )
 
-            # SUCCESS: Flash message and REDIRECT.
-            # Redirecting forces a page reload, which clears the form fields automatically.
             flash("Your message has been sent successfully!", "success")
             return redirect(url_for('contact'))
 
-        except Exception as e:
-            # FAILURE (SMTP): Flash error and allow code to fall through to render_template.
+        except Exception:
             logger.exception("Contact email failed")
             flash("Failed to send message. Please try again later.", "danger")
     
-    # Renders on: 
-    # 1. Initial Page Load (GET)
-    # 2. Form Validation Error (POST) -> 'form' contains input data + errors
-    # 3. Exception caught above (POST) -> 'form' contains input data
     return render_template("contact.html", form=form)
 
-@app.route("/health")
-def health():
-    return "OK", 200
 
+# -------------------------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run(
