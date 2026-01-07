@@ -8,7 +8,8 @@ class CreatePostForm(FlaskForm):
     title = StringField("Blog Post Title", validators=[DataRequired()])
     subtitle = StringField("Subtitle", validators=[DataRequired()])
     img_url = StringField("Blog Image URL", validators=[DataRequired(), URL()])
-    body = CKEditorField("Blog Content", validators=[DataRequired()])
+    # body = CKEditorField("Blog Content", validators=[DataRequired()])
+    body = TextAreaField("Blog Content", validators=[DataRequired()])
     submit = SubmitField("Submit Post")
 
 
@@ -37,7 +38,8 @@ class ResendVerificationForm(FlaskForm):
     submit = SubmitField("Resend verification email")
 
 class CommentForm(FlaskForm):
-    comment_text = CKEditorField("Comment", validators=[DataRequired()])
+    # comment_text = CKEditorField("Comment", validators=[DataRequired()])
+    comment_text = TextAreaField("Comment", validators=[DataRequired()])
     submit = SubmitField("Submit Comment")
 
 class ContactForm(FlaskForm):
@@ -75,3 +77,11 @@ class ResetPasswordForm(FlaskForm):
     email = StringField()
 
     submit = SubmitField("Reset Password")
+
+class DeleteReasonForm(FlaskForm):
+    reason = TextAreaField("Reason for deletion", validators=[DataRequired()])
+    submit = SubmitField("Delete Post & Notify User")
+
+class WarnUserForm(FlaskForm):
+    message = TextAreaField("Warning Message", validators=[DataRequired()])
+    submit = SubmitField("Send Warning Email")

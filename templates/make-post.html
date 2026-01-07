@@ -29,7 +29,6 @@
   <div class="container">
     <div class="row justify-content-center">
 
-      <!-- Flash Messages -->
       <div class="col-lg-8 col-md-10">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -46,9 +45,6 @@
       <div class="col-lg-8 col-md-10 mx-auto">
         <form method="POST" novalidate>
           {{ form.hidden_tag() }}
-
-          {{ ckeditor.load() }}
-          {{ ckeditor.config(name='body') }}
 
           <div class="mb-3">
             {{ form.title.label(class="form-label") }}
@@ -88,7 +84,9 @@
 
           <div class="mb-3">
             {{ form.body.label(class="form-label") }}
-            {{ form.body(class="form-control") }}
+            
+            {{ form.body(class="form-control", id="body") }}
+            
             {% if form.body.errors %}
               <div class="text-danger">
                 {% for error in form.body.errors %}
@@ -106,4 +104,43 @@
     </div>
   </div>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+
+<script>
+  tinymce.init({
+    selector: '#body', 
+    height: 600,
+    menubar: true,
+    
+    // --- DESKTOP PLUGINS ---
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+      'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'help', 'wordcount', 'codesample'
+    ],
+    
+    // --- DESKTOP TOOLBAR (Heavy Duty) ---
+    toolbar: 'undo redo | blocks | ' +
+      'bold italic backcolor | alignleft aligncenter ' +
+      'alignright alignjustify | bullist numlist outdent indent | ' +
+      'removeformat | image link codesample | help',
+    
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
+    
+    image_title: true,
+    automatic_uploads: true,
+    file_picker_types: 'image',
+
+    // --- MOBILE SPECIFIC CONFIGURATION (The Fix) ---
+    mobile: {
+      menubar: true,
+      plugins: 'lists autolink link image',
+      toolbar: 'undo bold italic styles | bullist numlist | link image',
+      content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px; padding:10px; }'
+    }
+  });
+</script>
 {% endblock %}

@@ -3,9 +3,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from threading import Thread
-
-# Third-Party Imports
 import click
+import bleach
 from dotenv import load_dotenv
 from flask import (
     Flask, abort, render_template, redirect,
@@ -27,7 +26,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, text
+from sqlalchemy import Integer, String, Text, Boolean, DateTime, text, or_, extract, func
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -36,7 +35,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from forms import (
     CreatePostForm, RegisterForm, LoginForm,
     CommentForm, ResendVerificationForm, ContactForm, 
-    RequestResetForm, ResetPasswordForm
+    RequestResetForm, ResetPasswordForm, DeleteReasonForm, WarnUserForm
 )
 from utils.email import send_email 
 from utils.captcha import verify_hcaptcha
@@ -92,6 +91,8 @@ app.config.update(
     
     # Database Config
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
+
+    TINYMCE_API_KEY=os.environ.get("TINYMCE_API_KEY")
 )
 
 # Database URI Fix (Postgres/Render compatibility)
@@ -450,7 +451,7 @@ def register():
                     salt_length=16
                 ),
                 name=form.name.data,
-                verification_sent_at=now # <--- Uses the clean 'now'
+                verification_sent_at=now
             )
 
             db.session.add(new_user)
@@ -895,10 +896,153 @@ def logout():
 # 9. BLOG ROUTES
 # -------------------------------------------------------------------
 
+@app.route("/search")
+def search():
+    # 1. Get arguments
+    query = request.args.get("q", "").strip()
+    sort_order = request.args.get("sort", "newest")
+    scope = request.args.get("scope", "")
+    
+    # NEW: distinct date parts
+    f_year = request.args.get("year", "")
+    f_month = request.args.get("month", "")
+    f_day = request.args.get("day", "")
+
+    # If absolutely empty, go home
+    if not any([query, scope, f_year, f_month, f_day]):
+        return redirect(url_for("get_all_posts"))
+
+    stmt = db.select(BlogPost).join(User)
+
+    # --- 1. SCOPE ---
+    if scope == "me" and current_user.is_authenticated:
+        stmt = stmt.where(BlogPost.author_id == current_user.id)
+    #     page_title = "My Posts"
+    # else:
+    #     page_title = "Search Results"
+
+    msg_parts = []
+
+    # --- 2. FLEXIBLE DATE FILTER ---
+    # We apply each filter independently if it exists
+    
+    # A. Year Filter
+    if f_year:
+        stmt = stmt.where(extract('year', BlogPost.date) == f_year)
+    
+    # B. Month Filter (1-12)
+    if f_month:
+        stmt = stmt.where(extract('month', BlogPost.date) == f_month)
+
+    # C. Day Filter (1-31)
+    if f_day:
+        stmt = stmt.where(extract('day', BlogPost.date) == f_day)
+
+    # D. Build Readable Badge Message
+    if f_year or f_month or f_day:
+        date_str = ""
+        # Helper to get month name (e.g., "01" -> "January")
+        if f_month:
+            from calendar import month_name
+            try:
+                m_name = month_name[int(f_month)]
+            except:
+                m_name = f_month
+        
+        # Scenario 1: Full Date (Jan 6, 2025)
+        if f_year and f_month and f_day:
+            date_str = f"on {m_name} {f_day}, {f_year}"
+        # Scenario 2: Year + Month (January 2025)
+        elif f_year and f_month:
+            date_str = f"in {m_name} {f_year}"
+        # Scenario 3: Year Only (2025)
+        elif f_year:
+            date_str = f"in {f_year}"
+        # Scenario 4: Month + Day (Jan 6th of any year - rare but possible)
+        elif f_month and f_day:
+            date_str = f"on {m_name} {f_day}"
+        # Scenario 5: Month Only (January of any year)
+        elif f_month:
+            date_str = f"in {m_name}"
+            
+        msg_parts.append(date_str)
+
+    # --- 3. TEXT SEARCH ---
+    if query:
+        msg_parts.append(f"matching '{query}'")
+        stmt = stmt.where(
+            or_(
+                BlogPost.title.ilike(f"%{query}%"),
+                BlogPost.subtitle.ilike(f"%{query}%"),
+                BlogPost.body.ilike(f"%{query}%"),
+                User.name.ilike(f"%{query}%")
+            )
+        )
+
+    # --- 4. SORTING ---
+    if sort_order == "oldest":
+        stmt = stmt.order_by(BlogPost.date.asc())
+    else:
+        stmt = stmt.order_by(BlogPost.date.desc())
+
+    posts = db.session.scalars(stmt).all()
+
+    # Final Badge
+    if not msg_parts:
+        search_message = "All Posts"
+    else:
+        search_message = "Found results " + " ".join(msg_parts)
+
+    return render_template(
+        "index.html", 
+        all_posts=posts, 
+        search_message=search_message
+    )
+
 @app.route("/")
 def get_all_posts():
     posts = db.session.scalars(db.select(BlogPost).order_by(BlogPost.date.desc())).all()
     return render_template("index.html", all_posts=posts)
+
+@app.route("/my-posts")
+@login_required
+def get_user_posts():
+    # Query posts written ONLY by the current user
+    posts = db.session.scalars(
+        db.select(BlogPost)
+        .where(BlogPost.author_id == current_user.id)
+        .order_by(BlogPost.date.desc())
+    ).all()
+    
+    # Reuse index.html, but pass a flag/title to indicate this is a dashboard
+    return render_template("index.html", all_posts=posts, page_title="My Posts")
+
+
+# --- CUSTOM CLEANING FUNCTION ---
+def clean_html(text):
+    """
+    Cleans HTML text using Bleach, allowing specific tags and attributes
+    (including images and styles) while stripping dangerous scripts.
+    """
+    allowed_tags = [
+        'a', 'b', 'i', 'u', 'em', 'strong', 'p', 'img', 'br', 'span', 
+        'div', 'blockquote', 'ul', 'ol', 'li', 
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td', 'pre', 'code'
+    ]
+    
+    allowed_attrs = {
+        '*': ['class', 'style'],                # Allow styling on all tags
+        'a': ['href', 'target', 'rel'],         # Allow links
+        'img': ['src', 'alt', 'width', 'height', 'style'] # Allow images
+    }
+
+    return bleach.clean(
+        text,
+        tags=allowed_tags,
+        attributes=allowed_attrs,
+        strip=True
+    )
 
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
@@ -915,7 +1059,7 @@ def show_post(post_id):
             return redirect(url_for("resend_verification_get"))
 
         comment = Comment(
-            text=cleanify(form.comment_text.data),
+            text=clean_html(form.comment_text.data),
             comment_author=current_user,
             parent_post=post
         )
@@ -926,16 +1070,16 @@ def show_post(post_id):
     return render_template("post.html", post=post, form=form)
 
 @app.route("/new-post", methods=["GET", "POST"])
-@admin_only
+@login_required  # <--- CHANGED: Allows any logged-in user
 def add_new_post():
     form = CreatePostForm()
     if form.validate_on_submit():
         post = BlogPost(
             title=form.title.data,
             subtitle=form.subtitle.data,
-            body=cleanify(form.body.data),
+            body=clean_html(form.body.data),
             img_url=form.img_url.data,
-            author=current_user,
+            author=current_user,  # Assigns the current logged-in user as author
         )
         db.session.add(post)
         db.session.commit()
@@ -943,32 +1087,134 @@ def add_new_post():
     return render_template("make-post.html", form=form)
 
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
-@admin_only
+@login_required 
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
+    
+    # AUTHORIZATION CHECK
+    # Only the author can edit. Admins cannot rewrite content (they can only delete).
+    if current_user.id != post.author_id:
+        abort(403)  # Forbidden
+
     form = CreatePostForm(obj=post)
     if form.validate_on_submit():
         form.populate_obj(post)
-        post.body = cleanify(form.body.data)
+        post.body = clean_html(form.body.data)
         db.session.commit()
         return redirect(url_for("show_post", post_id=post.id))
     return render_template("make-post.html", form=form, is_edit=True)
 
 @app.route("/delete/<int:post_id>", methods=["POST", "GET"])
-@admin_only
+@login_required 
 def delete_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
-    db.session.delete(post)
-    db.session.commit()
-    return redirect(url_for("get_all_posts"))
+    
+    # CASE 1: User deleting their own post (Immediate Delete)
+    if current_user.id == post.author_id:
+        db.session.delete(post)
+        db.session.commit()
+        flash("Post deleted.", "info")
+        # CHANGED: Redirect back to "My Posts" so they stay in their dashboard
+        return redirect(url_for("get_user_posts"))
+
+    # CASE 2: Admin deleting someone else's post (Redirect to Reason Form)
+    elif current_user.role == "admin":
+        return redirect(url_for("admin_delete_post", post_id=post.id))
+
+    # CASE 3: Unauthorized
+    else:
+        abort(403)
+
+@app.route("/admin-delete/<int:post_id>", methods=["GET", "POST"])
+@admin_only
+def admin_delete_post(post_id):
+    post = db.get_or_404(BlogPost, post_id)
+    form = DeleteReasonForm()
+
+    if form.validate_on_submit():
+        # 1. Prepare Email Content
+        reason = form.reason.data
+        subject = f"Your post '{post.title}' has been removed"
+        
+        # Render the email body
+        # We will create this template in the next step
+        html_body = render_template(
+            "email/post_deleted.html", 
+            user=post.author, 
+            post_title=post.title, 
+            reason=reason
+        )
+
+        # 2. Send Email (Background Thread)
+        Thread(
+            target=send_email,
+            args=(post.author.email, subject, html_body)
+        ).start()
+
+        # 3. Delete the Post
+        db.session.delete(post)
+        db.session.commit()
+        
+        flash("Post deleted and user notified.", "success")
+        return redirect(url_for("get_all_posts"))
+
+    return render_template("admin_delete_post.html", form=form, post=post)
+
+@app.route("/admin-warn/<int:post_id>", methods=["GET", "POST"])
+@admin_only
+def warn_post_author(post_id):
+    post = db.get_or_404(BlogPost, post_id)
+    form = WarnUserForm()
+
+    if form.validate_on_submit():
+        # 1. Prepare Email Content
+        warning_message = form.message.data
+        subject = f"Warning regarding your post: '{post.title}'"
+        
+        html_body = render_template(
+            "email/warning_notification.html", 
+            user=post.author, 
+            post_title=post.title, 
+            message=warning_message
+        )
+
+        # 2. Send Email
+        Thread(
+            target=send_email,
+            args=(post.author.email, subject, html_body)
+        ).start()
+        
+        # 3. Success (No deletion)
+        flash(f"Warning sent to {post.author.name}.", "success")
+        return redirect(url_for("get_all_posts"))
+
+    return render_template("admin_warn_author.html", form=form, post=post, page_title="Warn User")
+
+@app.route("/delete-comment/<int:comment_id>", methods=["POST"])
+@login_required
+def delete_comment(comment_id):
+    comment_to_delete = Comment.query.get_or_404(comment_id)
+    
+    # 1. Store the post_id safely before deleting
+    post_id = comment_to_delete.post_id
+    
+    # 2. Check permissions (Admin or Comment Author)
+    if comment_to_delete.comment_author.id == current_user.id or current_user.role == "admin":
+        db.session.delete(comment_to_delete)
+        db.session.commit()
+        return redirect(url_for('show_post', post_id=post_id))
+        
+    else:
+        flash("You are not authorized to delete this comment.")
+        return redirect(url_for('show_post', post_id=post_id))
 
 # -------------------------------------------------------------------
 # 10. STATIC PAGES & CONTACT
 # -------------------------------------------------------------------
 
-@app.route("/about")
-def about():
-    return render_template("about.html")
+# @app.route("/about")
+# def about():
+#     return render_template("about.html")
 
 @app.route("/contact", methods=["GET", "POST"])
 def contact():

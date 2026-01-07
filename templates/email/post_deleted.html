@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Post Removed</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f4f4f7;
+            color: #51545E;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .content-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 40px;
+            text-align: center;
+        }
+        /* Keeping .btn class available for consistency, though not used in this specific email */
+        .btn {
+            display: inline-block;
+            background-color: #007bff;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin: 25px 0;
+            font-size: 16px;
+        }
+        .info-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        /* Specific style for the Reason Block */
+        .reason-box {
+            background-color: #f8f9fa; /* Light Gray */
+            border-left: 4px solid #dc3545; /* Red border to indicate deletion/alert */
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+            font-style: italic;
+            color: #555;
+            border-radius: 4px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #a8aaaf;
+            margin-top: 20px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="content-card">
+            
+            <h2 style="color: #dc3545; margin-top: 0;">Post Removed</h2>
+            
+            <p class="info-text">Hello {{ user.name }},</p>
+            
+            <p class="info-text">
+                Your post titled <strong>"{{ post_title }}"</strong> has been removed by an administrator.
+            </p>
+
+            <p style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #51545E;">Reason provided:</p>
+            
+            <div class="reason-box">
+                "{{ reason }}"
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            
+            <p class="info-text" style="font-size: 14px;">
+                If you have any questions regarding this action, please reply to this email.
+            </p>
+
+        </div>
+
+        <div class="footer">
+            <p>Best regards,<br>The Blog Team</p>
+        </div>
+    </div>
+
+</body>
+</html>

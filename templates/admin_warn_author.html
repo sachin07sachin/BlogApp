@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block header %}
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+  <div class="container position-relative px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        <div class="site-heading">
+          <h1>Moderation</h1>
+          <span class="subheading">Warn Author: {{ post.author.name }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="container px-4 px-lg-5">
+  <div class="row gx-4 gx-lg-5 justify-content-center">
+    <div class="col-md-10 col-lg-8 col-xl-7">
+
+      <p>Sending a warning regarding the post: <strong>{{ post.title }}</strong>.</p>
+      
+      <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+
+        <div class="mb-3">
+          {{ form.message.label(class="form-label") }}
+          {{ form.message(class="form-control", rows="5", placeholder="Explain the violation or issue...") }}
+          
+          {% if form.message.errors %}
+            <div class="text-danger">
+              {% for error in form.message.errors %}
+                <small>{{ error }}</small>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+        {{ form.submit(class="btn btn-warning") }}
+        <a href="{{ url_for('get_all_posts') }}" class="btn btn-secondary ms-2">Cancel</a>
+      </form>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

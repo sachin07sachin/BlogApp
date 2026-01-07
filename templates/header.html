@@ -1,47 +1,119 @@
 <nav class="navbar navbar-expand-lg navbar-light" id="mainNav">
   <div class="container px-4 px-lg-5">
-    <a class="navbar-brand" href="{{ url_for('get_all_posts') }}">
-      Start Blog
-    </a>
-
-    <button
-      class="navbar-toggler"
-      type="button"
-      data-bs-toggle="collapse"
-      data-bs-target="#navbarResponsive"
-      aria-controls="navbarResponsive"
-      aria-expanded="false"
-      aria-label="Toggle navigation"
-    >
+    <a class="navbar-brand" href="{{ url_for('get_all_posts') }}">Start Blog</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
       Menu <i class="fas fa-bars"></i>
     </button>
-
     <div class="collapse navbar-collapse" id="navbarResponsive">
+      
       <ul class="navbar-nav ms-auto py-4 py-lg-0">
-        <li class="nav-item">
-          <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a>
-        </li>
-
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
         {% if not current_user.is_authenticated %}
-          <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a>
-          </li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a></li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
         {% else %}
-          <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a>
-          </li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_user_posts') }}">My Posts</a></li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
         {% endif %}
-
-        <li class="nav-item">
-          <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('about') }}">About</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Contact</a>
-        </li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Contact</a></li>
       </ul>
+
+      {% if request.endpoint in ['get_all_posts', 'get_user_posts', 'search'] %}
+      
+        <form class="d-flex ms-lg-3 my-2 my-lg-0" action="{{ url_for('search') }}" method="GET">
+          
+          {% if request.endpoint == 'get_user_posts' or request.args.get('scope') == 'me' %}
+              <input type="hidden" name="scope" value="me">
+          {% endif %}
+
+          <div class="input-group input-group-sm">
+            
+            {% set filters_active = request.args.get('year') or request.args.get('month') or request.args.get('day') or request.args.get('sort') == 'oldest' %}
+            <button 
+                class="btn {% if filters_active %}btn-warning{% else %}btn-light search-input{% endif %} dropdown-toggle" 
+                type="button" 
+                data-bs-toggle="dropdown" 
+                aria-expanded="false"
+                style="border-right: 1px solid rgba(0,0,0,0.1);"
+            >
+                <i class="bi bi-funnel-fill"></i>
+            </button>
+
+            <ul class="dropdown-menu p-3 shadow" style="min-width: 300px;" onclick="event.stopPropagation()">
+                
+                <li>
+                    <h6 class="dropdown-header px-0 text-uppercase small fw-bold">Sort Order</h6>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="sort" value="newest" id="sortNew" 
+                               {% if request.args.get('sort', 'newest') == 'newest' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary btn-sm" for="sortNew">Newest</label>
+
+                        <input type="radio" class="btn-check" name="sort" value="oldest" id="sortOld" 
+                               {% if request.args.get('sort') == 'oldest' %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary btn-sm" for="sortOld">Oldest</label>
+                    </div>
+                </li>
+
+                <li><hr class="dropdown-divider my-3"></li>
+
+                <li>
+                    <label class="form-label small fw-bold text-muted mb-2">Filter by Date:</label>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <input type="number" name="year" class="form-control form-control-sm" placeholder="Year" min="2000" max="2100"
+                                   value="{{ request.args.get('year', '') }}">
+                        </div>
+                        <div class="col-4">
+                            <select name="month" class="form-select form-select-sm">
+                                <option value="">Month</option>
+                                <option value="1" {% if request.args.get('month')=='1' %}selected{% endif %}>Jan</option>
+                                <option value="2" {% if request.args.get('month')=='2' %}selected{% endif %}>Feb</option>
+                                <option value="3" {% if request.args.get('month')=='3' %}selected{% endif %}>Mar</option>
+                                <option value="4" {% if request.args.get('month')=='4' %}selected{% endif %}>Apr</option>
+                                <option value="5" {% if request.args.get('month')=='5' %}selected{% endif %}>May</option>
+                                <option value="6" {% if request.args.get('month')=='6' %}selected{% endif %}>Jun</option>
+                                <option value="7" {% if request.args.get('month')=='7' %}selected{% endif %}>Jul</option>
+                                <option value="8" {% if request.args.get('month')=='8' %}selected{% endif %}>Aug</option>
+                                <option value="9" {% if request.args.get('month')=='9' %}selected{% endif %}>Sep</option>
+                                <option value="10" {% if request.args.get('month')=='10' %}selected{% endif %}>Oct</option>
+                                <option value="11" {% if request.args.get('month')=='11' %}selected{% endif %}>Nov</option>
+                                <option value="12" {% if request.args.get('month')=='12' %}selected{% endif %}>Dec</option>
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <input type="number" name="day" class="form-control form-control-sm" placeholder="Day" min="1" max="31"
+                                   value="{{ request.args.get('day', '') }}">
+                        </div>
+                    </div>
+                    <div class="form-text x-small mt-2">
+                        Fill any combination (e.g. Year only, or Year + Month).
+                    </div>
+                </li>
+
+                <li><hr class="dropdown-divider my-3"></li>
+
+                <li>
+                    <button type="submit" class="btn btn-primary btn-sm w-100 mb-2">Apply Filters</button>
+                    <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
+                </li>
+            </ul>
+
+            <input 
+                class="form-control search-input" 
+                type="search" 
+                name="q" 
+                placeholder="Search{% if request.args.get('scope') == 'me' or request.endpoint == 'get_user_posts' %} my posts...{% else %}...{% endif %}" 
+                aria-label="Search"
+                value="{{ request.args.get('q', '') }}" 
+            >
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-search"></i>
+            </button>
+          </div>
+        </form>
+
+      {% endif %}
+
     </div>
   </div>
 </nav>

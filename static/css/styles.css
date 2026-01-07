@@ -10851,3 +10851,106 @@ header.masthead .post-heading .meta a {
 .social-icons a:hover {
     color: #000 !important; /* or your brand color */
 }
+
+/* =========================================
+   SEARCH BAR & FILTER STYLING
+   ========================================= */
+
+/* 1. INPUTS & BUTTONS (Glassmorphism) */
+/* Applies to both the text input and the filter button */
+.navbar .search-input {
+    background-color: rgba(255, 255, 255, 0.8); /* 80% opaque white */
+    border: none;
+    color: #333;
+    transition: all 0.3s ease;
+    height: 100%; /* Ensures filter button and text input are same height */
+}
+
+/* On Focus / Hover: Become solid white */
+.navbar .search-input:focus,
+.navbar .search-input:hover {
+    background-color: #ffffff;
+    box-shadow: none; /* Removes default blue glow */
+    outline: none;
+}
+
+/* General Search Button Alignment */
+.navbar .input-group .btn {
+    border: none;
+    display: flex;
+    align-items: center;
+}
+
+/* 2. FILTER DROPDOWN MENU */
+.navbar .dropdown-menu {
+    border: none;
+    border-radius: 10px; /* Softer corners */
+    font-size: 0.9rem;
+    margin-top: 10px; /* Spacing from the bar */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); /* Soft, deep shadow */
+}
+
+/* Fix vertical alignment of the funnel icon */
+.navbar .dropdown-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Remove the default arrow triangle from the dropdown button */
+.navbar .dropdown-toggle::after {
+    display: none; 
+}
+
+/* The "Active Filter" Yellow State */
+.navbar .btn-warning {
+    color: #333;
+    font-weight: bold;
+    border: none;
+    background-color: #ffc107; /* Bootstrap standard yellow */
+}
+
+/* =========================================
+   SEARCH RESULTS BADGE (The "Tech Pill")
+   ========================================= */
+/* KEEP THIS! It styles the "Found results for..." text */
+.search-badge {
+    background-color: rgba(255, 255, 255, 0.15); 
+    backdrop-filter: blur(5px); 
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    
+    color: #ffffff;
+    display: inline-block;
+    padding: 10px 25px;
+    border-radius: 50px;
+    
+    font-size: 0.85rem;      
+    font-weight: 700;        
+    letter-spacing: 2px;
+    font-family: 'Open Sans', sans-serif; 
+    text-transform: uppercase;
+    
+    margin-top: 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
+    transition: all 0.3s ease;
+}
+
+/* .search-badge:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-3px); 
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    cursor: default;
+} */
+
+/* FORCE HIDE CKEDITOR WARNINGS */
+.cke_notification_warning {
+    display: none !important;
+}
+
+.cke_notification_message {
+    display: none !important;
+}
+
+span.cke_notification_message {
+    display: none !important;
+}
