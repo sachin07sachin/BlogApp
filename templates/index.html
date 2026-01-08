@@ -39,6 +39,8 @@
         {% endif %}
       {% endwith %}
 
+      {% if all_posts|length > 0 %}
+
       {% for post in all_posts %}
         <div class="post-preview">
           <a href="{{ url_for('show_post', post_id=post.id) }}">
@@ -89,6 +91,30 @@
             Create New Post
           </a>
         </div>
+      {% endif %}
+
+      {% else %}
+
+        <div class="text-center py-5 my-3">
+              <div class="mb-3">
+                  <i class="bi bi-journal-x display-1 text-muted opacity-50"></i>
+              </div>
+              <h3 class="fw-bold text-muted">No posts published yet</h3>
+              <p class="text-muted mb-4 lead">It feels a little quiet in here.</p>
+              
+              {% if current_user.is_authenticated %}
+                  <a href="{{ url_for('add_new_post') }}" class="btn btn-primary btn-lg rounded-pill px-4 shadow-sm">
+                      <i class="bi bi-pen-fill me-2"></i>Write the First Post
+                  </a>
+              {% else %}
+                  <p class="text-muted small">
+                      Check back later for updates or 
+                      <a href="{{ url_for('login_get') }}" class="text-decoration-none">log in</a> 
+                      to start writing.
+                  </p>
+              {% endif %}
+          </div>
+
       {% endif %}
 
     </div>
