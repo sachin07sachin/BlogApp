@@ -1,0 +1,185 @@
+{% extends "base.html" %} {% block header %}
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')"
+>
+  <div class="container position-relative px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        <div class="site-heading">
+          <h1>Settings</h1>
+          <span class="subheading">Manage your profile and preferences</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %} {% block content %}
+<main class="mb-4">
+  <div class="container px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if
+        messages %} {% for category, message in messages %}
+        <div
+          class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4"
+          role="alert"
+        >
+          {{ message }}
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="alert"
+          ></button>
+        </div>
+        {% endfor %} {% endif %} {% endwith %}
+
+        <form method="POST" action="{{ url_for('settings') }}" novalidate>
+          {{ form.hidden_tag() }}
+
+          <h5 class="fw-bold mb-3 mt-4 border-bottom pb-2">Profile Details</h5>
+
+          <div class="d-flex align-items-center mb-4 p-3 bg-body-tertiary rounded-3 gap-3">
+            <img
+              src="{{ current_user.email | gravatar }}"
+              class="rounded-circle me-3 shadow-sm"
+              width="60"
+              height="60"
+              alt="Avatar"
+            />
+            <div>
+              <div class="fw-bold">{{ current_user.name }}</div>
+              <div class="text-muted small">@{{ current_user.username }}</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            {{ form.name.label(class="form-label fw-bold text-muted small
+            text-uppercase") }} {{ form.name(class="form-control",
+            placeholder="Enter your display name") }} {% if form.name.errors %}
+            <div class="text-danger small mt-1">
+              {% for error in form.name.errors %}
+              <span>{{ error }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.username.label(class="form-label fw-bold text-muted small
+            text-uppercase") }}
+            <div class="input-group">
+              <span class="input-group-text bg-body-tertiary text-muted border-end-0"
+                >@</span
+              >
+              {{ form.username(class="form-control border-start-0 ps-0",
+              placeholder="unique_handle") }}
+            </div>
+            {% if form.username.errors %}
+            <div class="text-danger small mt-1">
+              {% for error in form.username.errors %}
+              <span>{{ error }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="mb-4">
+            {{ form.about_me.label(class="form-label fw-bold text-muted small
+            text-uppercase") }} {{ form.about_me(class="form-control", rows="4")
+            }}
+            <div class="form-text text-end small">Max 500 characters</div>
+            {% if form.about_me.errors %}
+            <div class="text-danger small mt-1">
+              {% for error in form.about_me.errors %}
+              <span>{{ error }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <h5 class="fw-bold mb-3 mt-5 border-bottom pb-2">Notifications</h5>
+
+          <div class="card border-0 shadow-sm bg-body-tertiary mb-4">
+            <div class="card-body">
+              <div class="form-check form-switch mb-4">
+                {{ form.notify_on_comments(class="form-check-input",
+                style="cursor: pointer; width: 3em; height: 1.5em; margin-left:
+                -3.5em;") }}
+                <div class="ms-2">
+                  <label
+                    class="form-check-label fw-bold"
+                    for="notify_on_comments"
+                    >Conversation Alerts</label
+                  >
+                  <div class="text-muted small" style="line-height: 1.2">
+                    Email me when someone comments on my posts or replies to my
+                    comments.
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-check form-switch mb-4">
+                {{ form.notify_new_post(class="form-check-input", style="cursor:
+                pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
+                <div class="ms-2">
+                  <label class="form-check-label fw-bold" for="notify_new_post"
+                    >Blog Newsletter</label
+                  >
+                  <div class="text-muted small" style="line-height: 1.2">
+                    Email me when a new blog post is published.
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-check form-switch">
+                {{ form.notify_post_edit(class="form-check-input",
+                style="cursor: pointer; width: 3em; height: 1.5em; margin-left:
+                -3.5em;") }}
+                <div class="ms-2">
+                  <label class="form-check-label fw-bold" for="notify_post_edit"
+                    >Content Updates</label
+                  >
+                  <div class="text-muted small" style="line-height: 1.2">
+                    Email me when a post is updated/edited.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
+            <a
+              href="{{ url_for('get_all_posts') }}"
+              class="btn btn-outline-secondary me-md-2"
+              >Cancel</a
+            >
+            {{ form.submit(class="btn btn-primary") }}
+          </div>
+        </form>
+        <div class="mt-5">
+          <h5 class="fw-bold mb-3 border-bottom pb-2">Support</h5>
+
+          <div class="list-group shadow-sm">
+            <a
+              href="{{ url_for('contact') }}"
+              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 gap-3"
+            >
+              <div class="d-flex align-items-center">
+                <i class="bi bi-life-preserver fs-5 me-3 text-primary"></i>
+                <div>
+                  <div class="fw-bold">Help & Support</div>
+                  <div class="text-muted small">
+                    Have questions? Contact our support team.
+                  </div>
+                </div>
+              </div>
+              <i class="bi bi-chevron-right text-muted small"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

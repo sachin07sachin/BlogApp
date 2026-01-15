@@ -1,22 +1,18 @@
 {% extends "base.html" %}
 
 {% block header %}
-<header
-  class="masthead"
-  style="background-image: url('{{ url_for('static', filename='assets/img/edit-bg.jpg') }}')"
->
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/edit-bg.jpg') }}')">
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
         <div class="page-heading">
           {% if is_edit %}
             <h1>Edit Post</h1>
+            <span class="subheading">Refine your content.</span>
           {% else %}
             <h1>New Post</h1>
+            <span class="subheading">Share your story with the world.</span>
           {% endif %}
-          <span class="subheading">
-            You're going to make a great blog post!
-          </span>
         </div>
       </div>
     </div>
@@ -26,80 +22,63 @@
 
 {% block content %}
 <main class="mb-4">
-  <div class="container">
-    <div class="row justify-content-center">
-
-      <div class="col-lg-8 col-md-10">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-      </div>
-
-      <div class="col-lg-8 col-md-10 mx-auto">
+  <div class="container px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        
         <form method="POST" novalidate>
           {{ form.hidden_tag() }}
-
-          <div class="mb-3">
-            {{ form.title.label(class="form-label") }}
-            {{ form.title(class="form-control", placeholder="Post title") }}
+          
+          <div class="form-floating mb-3">
+            {{ form.title(class="form-control", placeholder="Title") }}
+            {{ form.title.label }}
             {% if form.title.errors %}
-              <div class="text-danger">
-                {% for error in form.title.errors %}
-                  <small>{{ error }}</small>
-                {% endfor %}
-              </div>
+                <span class="text-danger small">{{ form.title.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="mb-3">
-            {{ form.subtitle.label(class="form-label") }}
-            {{ form.subtitle(class="form-control", placeholder="Post subtitle") }}
+          <div class="form-floating mb-3">
+            {{ form.subtitle(class="form-control", placeholder="Subtitle") }}
+            {{ form.subtitle.label }}
             {% if form.subtitle.errors %}
-              <div class="text-danger">
-                {% for error in form.subtitle.errors %}
-                  <small>{{ error }}</small>
-                {% endfor %}
-              </div>
+                <span class="text-danger small">{{ form.subtitle.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="mb-3">
-            {{ form.img_url.label(class="form-label") }}
+          <div class="form-floating mb-3">
             {{ form.img_url(class="form-control", placeholder="Image URL") }}
+            {{ form.img_url.label }}
             {% if form.img_url.errors %}
-              <div class="text-danger">
-                {% for error in form.img_url.errors %}
-                  <small>{{ error }}</small>
-                {% endfor %}
-              </div>
+                <span class="text-danger small">{{ form.img_url.errors[0] }}</span>
+            {% endif %}
+          </div>
+          
+          <div class="mb-4">
+            {{ form.body.label(class="form-label fw-bold text-muted") }}
+            {{ form.body(class="form-control", style="height: 300px") }} {% if form.body.errors %}
+                <span class="text-danger small">{{ form.body.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="mb-3">
-            {{ form.body.label(class="form-label") }}
-            
-            {{ form.body(class="form-control", id="body") }}
-            
-            {% if form.body.errors %}
-              <div class="text-danger">
-                {% for error in form.body.errors %}
-                  <small>{{ error }}</small>
-                {% endfor %}
-              </div>
-            {% endif %}
+          <div class="card bg-light border-0 mb-4">
+            <div class="card-body">
+                <div class="form-check form-switch">
+                    {{ form.can_comment(class="form-check-input", style="cursor: pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
+                    <div class="ms-2">
+                        <label class="form-check-label fw-bold" for="can_comment">Enable Comments</label>
+                        <div class="text-muted small">Allow users to discuss this post.</div>
+                    </div>
+                </div>
+            </div>
           </div>
 
-          <button type="submit" class="btn btn-primary">
-            {% if is_edit %}Update Post{% else %}Publish Post{% endif %}
-          </button>
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+             <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-secondary me-md-2">Cancel</a>
+             {{ form.submit(class="btn btn-primary") }}
+          </div>
+          
         </form>
+
       </div>
     </div>
   </div>
@@ -111,36 +90,21 @@
 
 <script>
   tinymce.init({
-    selector: '#body', 
-    height: 600,
+    selector: '#body', // Target the body field ID
+    height: 500,
     menubar: true,
-    
-    // --- DESKTOP PLUGINS ---
     plugins: [
       'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
       'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-      'insertdatetime', 'media', 'table', 'help', 'wordcount', 'codesample'
+      'media', 'table', 'help', 'wordcount', 'emoticons'
     ],
-    
-    // --- DESKTOP TOOLBAR (Heavy Duty) ---
     toolbar: 'undo redo | blocks | ' +
       'bold italic backcolor | alignleft aligncenter ' +
       'alignright alignjustify | bullist numlist outdent indent | ' +
-      'removeformat | image link codesample | help',
-    
-    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
-    
-    image_title: true,
+      'removeformat | help',
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
     automatic_uploads: true,
     file_picker_types: 'image',
-
-    // --- MOBILE SPECIFIC CONFIGURATION (The Fix) ---
-    mobile: {
-      menubar: true,
-      plugins: 'lists autolink link image',
-      toolbar: 'undo bold italic styles | bullist numlist | link image',
-      content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px; padding:10px; }'
-    }
   });
 </script>
 {% endblock %}

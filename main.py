@@ -26,7 +26,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, text, or_, extract, func
+from sqlalchemy import Integer, String, Text, Boolean, DateTime, text, or_, extract, func, select, desc
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -35,7 +35,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from forms import (
     CreatePostForm, RegisterForm, LoginForm,
     CommentForm, ResendVerificationForm, ContactForm, 
-    RequestResetForm, ResetPasswordForm, DeleteReasonForm, WarnUserForm
+    RequestResetForm, ResetPasswordForm, DeleteReasonForm, WarnUserForm, SettingsForm
 )
 from utils.email import send_email 
 from utils.captcha import verify_hcaptcha
@@ -154,18 +154,32 @@ def load_user(user_id):
 class User(UserMixin, db.Model):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # --- CREDENTIALS ---
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user", server_default="user")
+
+    # --- PROFILE ---
+    about_me: Mapped[str | None] = mapped_column(Text())
     
-    # Verification & Security Fields
+    # --- SETTINGS / PREFERENCES ---
+    # Default is TRUE (Opt-out model)
+    notify_on_comments: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    notify_new_post: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    
+    # NEW: Notify on Edit
+    notify_post_edit: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    
+    # --- SECURITY ---
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reset_password_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
-    # Relationships
+    # --- RELATIONSHIPS ---
     posts = relationship("BlogPost", back_populates="author", passive_deletes=True)
     comments = relationship("Comment", back_populates="comment_author", passive_deletes=True)
 
@@ -185,6 +199,9 @@ class BlogPost(db.Model):
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
+
+    # Moderation
+    can_comment: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     
     comments = relationship("Comment", back_populates="parent_post", passive_deletes=True)
 
@@ -194,11 +211,24 @@ class Comment(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     
+    # --- RELATIONSHIPS ---
     author_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
     comment_author = relationship("User", back_populates="comments")
     
     post_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("blog_posts.id", ondelete="CASCADE"))
     parent_post = relationship("BlogPost", back_populates="comments")
+    
+    # --- NEW: CHAIN COMMENT LOGIC (Self-Referencing) ---
+    # Points to another comment ID (The Parent). If NULL, it's a top-level comment.
+    parent_id: Mapped[int | None] = mapped_column(Integer, db.ForeignKey("comments.id", ondelete="CASCADE"))
+    
+    # The Relationship definitions:
+    # 1. 'replies': Gets all comments where parent_id == this comment's ID
+    replies = relationship("Comment", back_populates="parent", cascade="all, delete-orphan")
+    
+    # 2. 'parent': Gets the single comment that this comment is replying to
+    # remote_side=[id] is REQUIRED for self-referencing tables
+    parent = relationship("Comment", back_populates="replies", remote_side=[id])
 
 # -------------------------------------------------------------------
 # 4. CORE DECORATORS & CLI
@@ -412,25 +442,36 @@ def register():
 
     if form.validate_on_submit():
         email = form.email.data.lower().strip()
+        # NEW: Capture the username from the form
+        username = form.username.data.strip()
         
-        # Check if user exists
-        existing_user = db.session.scalar(db.select(User).where(User.email == email))
+        # Check if user exists (by Email)
+        existing_email = db.session.scalar(db.select(User).where(User.email == email))
+        
+        # NEW: Check if username exists
+        existing_username = db.session.scalar(db.select(User).where(User.username == username))
 
-        # flash the same success message for everyone.
+        # NEW CASE: Username is taken
+        # We must stop here and ask them to pick a different one.
+        if existing_username:
+            flash("That username is already taken. Please choose another.", "warning")
+            return render_template("register.html", form=form)
+
+        # flash the same success message for everyone (Original Logic preserved)
         flash(
             "Registration successful! Please check your email to verify your account.",
             "success"
         )
 
-        # CASE 1: User Already Exists
-        if existing_user:
+        # CASE 1: User Already Exists (Email Match)
+        if existing_email:
             login_url = url_for("login_get", _external=True)
             reset_url = url_for("request_reset_get", _external=True)
             
             # Send "Already Registered" email
             html_body = render_template(
                 "email/already_registered.html", 
-                name=existing_user.name,
+                name=existing_email.name,
                 login_url=login_url,
                 reset_url=reset_url
             )
@@ -438,13 +479,15 @@ def register():
             # THREADING: Send in background
             Thread(
                 target=send_email,
-                args=(existing_user.email, "You already have an account", html_body)
+                args=(existing_email.email, "You already have an account", html_body)
             ).start()
 
         # CASE 2: New User
         else:
             new_user = User(
                 email=email,
+                # NEW: Save the unique username to the database
+                username=username,
                 password=generate_password_hash(
                     form.password.data,
                     method="pbkdf2:sha256",
@@ -999,10 +1042,64 @@ def search():
         search_message=search_message
     )
 
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    form = SettingsForm()
+    
+    if form.validate_on_submit():
+        # 1. Unique Username Check
+        # We only check the database if the user is attempting to CHANGE their username.
+        if form.username.data != current_user.username:
+            existing_user = db.session.scalar(db.select(User).where(User.username == form.username.data))
+            if existing_user:
+                flash("That username is already taken. Please choose another.", "warning")
+                return render_template("settings.html", form=form)
+        
+        # 2. Update Identity Data
+        current_user.username = form.username.data
+        current_user.name = form.name.data
+        current_user.about_me = form.about_me.data
+        
+        # 3. Update Notification Preferences
+        current_user.notify_on_comments = form.notify_on_comments.data
+        current_user.notify_new_post = form.notify_new_post.data
+        current_user.notify_post_edit = form.notify_post_edit.data # <--- NEW: Updates the 3rd toggle
+        
+        # 4. Commit Changes
+        db.session.commit()
+        flash("Your settings have been updated successfully.", "success")
+        return redirect(url_for('settings'))
+    
+    # 5. Pre-populate Form (GET Request)
+    # Fills the form fields with the user's current database values so they can edit them.
+    elif request.method == "GET":
+        form.username.data = current_user.username
+        form.name.data = current_user.name
+        form.about_me.data = current_user.about_me
+        
+        # Pre-fill the Toggles
+        form.notify_on_comments.data = current_user.notify_on_comments
+        form.notify_new_post.data = current_user.notify_new_post
+        form.notify_post_edit.data = current_user.notify_post_edit # <--- NEW: Pre-fills the 3rd toggle
+        
+    return render_template("settings.html", form=form)
+
 @app.route("/")
 def get_all_posts():
     posts = db.session.scalars(db.select(BlogPost).order_by(BlogPost.date.desc())).all()
     return render_template("index.html", all_posts=posts)
+
+@app.route("/user/<string:username>")
+def user_profile(username):
+    # 1. Fetch user or return 404 error if not found
+    user = User.query.filter_by(username=username).first_or_404()
+    
+    # 2. Fetch posts written by this user, newest first
+    posts = BlogPost.query.filter_by(author=user).order_by(BlogPost.date.desc()).all()
+    
+    # 3. Render the template
+    return render_template("profile.html", user=user, posts=posts)
 
 @app.route("/my-posts")
 @login_required
@@ -1050,6 +1147,7 @@ def show_post(post_id):
     form = CommentForm()
 
     if form.validate_on_submit():
+        # --- 1. Security Checks ---
         if not current_user.is_authenticated:
             flash("You need to login to comment.", "warning")
             return redirect(url_for("login_get"))
@@ -1058,50 +1156,181 @@ def show_post(post_id):
             flash("Please verify your email first.", "warning")
             return redirect(url_for("resend_verification_get"))
 
-        comment = Comment(
+        if not post.can_comment:
+             flash("Comments are disabled for this post.", "danger")
+             return redirect(url_for("show_post", post_id=post.id))
+
+        # --- 2. Process Comment Data ---
+        parent_id = form.parent_id.data
+        if not parent_id or parent_id == "":
+            parent_id = None
+        else:
+            parent_id = int(parent_id)
+
+        # --- 3. Save Comment ---
+        new_comment = Comment(
             text=clean_html(form.comment_text.data),
             comment_author=current_user,
-            parent_post=post
+            parent_post=post,
+            parent_id=parent_id
         )
-        db.session.add(comment)
+        db.session.add(new_comment)
         db.session.commit()
-        return redirect(url_for("show_post", post_id=post.id))
+
+        # --- 4. SMART NOTIFICATION SYSTEM ---
+        
+        # We use a dictionary to store recipients to avoid duplicate emails.
+        # Key = User ID, Value = Email Data
+        notification_queue = {}
+
+        # A. DEFAULT: Notify the Post Author ("New Comment")
+        if post.author.notify_on_comments and post.author.id != current_user.id:
+            post_url = url_for('show_post', post_id=post.id, _anchor=f"comment-{new_comment.id}", _external=True)
+            
+            html_body = render_template(
+                "email/new_comment_notification.html", 
+                post=post, 
+                comment=new_comment, 
+                commenter=current_user, 
+                post_url=post_url
+            )
+            
+            notification_queue[post.author.id] = {
+                "email": post.author.email,
+                "subject": f"New Comment on: {post.title}",
+                "body": html_body
+            }
+
+        # B. SPECIFIC: Notify the Parent Comment Author ("New Reply")
+        if parent_id:
+            parent_comment = db.session.get(Comment, parent_id)
+            if parent_comment and parent_comment.comment_author.notify_on_comments:
+                target_user = parent_comment.comment_author
+                
+                # Exclude self-reply (don't notify me if I reply to myself)
+                if target_user.id != current_user.id:
+                    
+                    post_url = url_for('show_post', post_id=post.id, _anchor=f"comment-{new_comment.id}", _external=True)
+                    
+                    html_body = render_template(
+                        "email/new_reply_notification.html", 
+                        post=post,
+                        parent_comment=parent_comment,
+                        reply=new_comment, 
+                        replier=current_user, 
+                        post_url=post_url
+                    )
+
+                    # OVERWRITE RULE: 
+                    # If the Parent Author IS the Post Author, the "Reply" email is more specific and better.
+                    # This overwrites the generic "New Comment" email added in Step A.
+                    notification_queue[target_user.id] = {
+                        "email": target_user.email,
+                        "subject": f"New Reply from {current_user.name}",
+                        "body": html_body
+                    }
+
+        # C. EXECUTE: Send the emails
+        for user_id, email_data in notification_queue.items():
+            Thread(
+                target=send_email, 
+                args=(email_data["email"], email_data["subject"], email_data["body"])
+            ).start()
+        # ------------------------------------
+
+        flash("Comment Posted", "success")
+        # UPDATED: Added _anchor to scroll to the new comment
+        return redirect(url_for("show_post", post_id=post.id, _anchor=f"comment-{new_comment.id}"))
 
     return render_template("post.html", post=post, form=form)
 
 @app.route("/new-post", methods=["GET", "POST"])
-@login_required  # <--- CHANGED: Allows any logged-in user
+@login_required 
 def add_new_post():
     form = CreatePostForm()
+    
     if form.validate_on_submit():
         post = BlogPost(
             title=form.title.data,
             subtitle=form.subtitle.data,
-            body=clean_html(form.body.data),
+            body=clean_html(form.body.data), # Preserves security logic
             img_url=form.img_url.data,
-            author=current_user,  # Assigns the current logged-in user as author
+            author=current_user,
+            
+            # Save Moderation Setting
+            can_comment=form.can_comment.data 
         )
+        
         db.session.add(post)
         db.session.commit()
+        
+        # --- NEWSLETTER LOGIC ---
+        # Find all users who want to know about new posts
+        subscribers = db.session.scalars(db.select(User).where(User.notify_new_post == True)).all()
+        
+        if subscribers:
+            # Generate Link with ANCHOR to scroll past header
+            post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+            
+            html_body = render_template("email/new_post_notification.html", post=post, post_url=post_url)
+            
+            # Send to subscribers in background
+            for sub in subscribers:
+                # Don't email the author about their own post
+                if sub.id != current_user.id:
+                    Thread(
+                        target=send_email,
+                        args=(sub.email, f"New Story: {post.title}", html_body)
+                    ).start()
+        # ------------------------
+
         return redirect(url_for("get_all_posts"))
+        
     return render_template("make-post.html", form=form)
 
+
+# --- ROUTE: EDIT POST ---
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
 @login_required 
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     
     # AUTHORIZATION CHECK
-    # Only the author can edit. Admins cannot rewrite content (they can only delete).
     if current_user.id != post.author_id:
-        abort(403)  # Forbidden
+        abort(403) 
 
+    # Pre-fills form with existing data
     form = CreatePostForm(obj=post)
+    
     if form.validate_on_submit():
+        # Auto-update all matching fields
         form.populate_obj(post)
+        
+        # Explicitly clean HTML
         post.body = clean_html(form.body.data)
+        
         db.session.commit()
+        
+        # --- UPDATE ALERT LOGIC ---
+        # Find users who want to know about edits
+        subscribers = db.session.scalars(db.select(User).where(User.notify_post_edit == True)).all()
+        
+        if subscribers:
+            # Generate Link with ANCHOR
+            post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+            
+            html_body = render_template("email/post_updated_notification.html", post=post, post_url=post_url)
+            
+            for sub in subscribers:
+                if sub.id != current_user.id:
+                    Thread(
+                        target=send_email, 
+                        args=(sub.email, f"Update: {post.title}", html_body)
+                    ).start()
+        # --------------------------
+        
         return redirect(url_for("show_post", post_id=post.id))
+        
     return render_template("make-post.html", form=form, is_edit=True)
 
 @app.route("/delete/<int:post_id>", methods=["POST", "GET"])
@@ -1193,7 +1422,7 @@ def warn_post_author(post_id):
 @app.route("/delete-comment/<int:comment_id>", methods=["POST"])
 @login_required
 def delete_comment(comment_id):
-    comment_to_delete = Comment.query.get_or_404(comment_id)
+    comment_to_delete = db.get_or_404(Comment, comment_id)
     
     # 1. Store the post_id safely before deleting
     post_id = comment_to_delete.post_id
@@ -1202,11 +1431,14 @@ def delete_comment(comment_id):
     if comment_to_delete.comment_author.id == current_user.id or current_user.role == "admin":
         db.session.delete(comment_to_delete)
         db.session.commit()
-        return redirect(url_for('show_post', post_id=post_id))
+        
+        # UX UPDATE: Added _anchor='comment-form-section' to keep user at the discussion
+        return redirect(url_for('show_post', post_id=post_id, _anchor='comment-form-section'))
         
     else:
         flash("You are not authorized to delete this comment.")
-        return redirect(url_for('show_post', post_id=post_id))
+        # UX UPDATE: Added anchor here too
+        return redirect(url_for('show_post', post_id=post_id, _anchor='comment-form-section'))
 
 # -------------------------------------------------------------------
 # 10. STATIC PAGES & CONTACT

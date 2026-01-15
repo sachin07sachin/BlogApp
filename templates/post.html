@@ -1,6 +1,39 @@
-{% extends "base.html" %}
+{% extends "base.html" %} 
 
 {% block header %}
+<style>
+  .author-link {
+    color: white !important;
+    text-decoration: none;
+    font-weight: bold;
+    display: inline-block; /* Required for transform to work */
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy animation */
+  }
+
+  .author-link:hover {
+    color: white !important; /* Keep it white */
+    transform: scale(1.2); /* Make it 20% bigger */
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* Add a white glow */
+  }
+
+  /* --- NEW: Yellow Fade Animation (Industry Standard) --- */
+  @keyframes highlightFade {
+      0% { 
+          background-color: rgba(255, 243, 205, 1); /* Soft Yellow (Bootstrap warning-bg color) */
+          box-shadow: 0 0 10px rgba(255, 243, 205, 0.5);
+      }
+      100% { 
+          background-color: transparent; 
+          box-shadow: none;
+      }
+  }
+
+  .highlight-anim {
+      animation: highlightFade 2.5s ease-out forwards; /* Runs for 2.5s then stops */
+      border-radius: 8px; /* Smooth corners during highlight */
+      transition: background-color 0.5s;
+  }
+</style>
 <header class="masthead" style="background-image: url('{{ post.img_url }}')">
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
@@ -10,7 +43,12 @@
           <h2 class="subheading">{{ post.subtitle }}</h2>
           <span class="meta">
             Posted by
-            <b>{{ post.author.name }}</b>
+            <a
+              href="{{ url_for('user_profile', username=post.author.username) }}"
+              class="fw-bold text-decoration-none author-link"
+            >
+              {{ post.author.name }}
+            </a>
             on {{ post.date.strftime('%B %d, %Y') }}
           </span>
         </div>
@@ -18,163 +56,380 @@
     </div>
   </div>
 </header>
-{% endblock %}
+{% endblock %} 
 
 {% block content %}
-<article>
+<article id="post-content">
   <div class="container px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
-
         {{ post.body | safe }}
 
         <div class="d-flex justify-content-end mb-4">
-            
-            {% if current_user.is_authenticated and current_user.role == "admin" %}
-              <a class="btn btn-warning me-2" href="{{ url_for('warn_post_author', post_id=post.id) }}">
-                Warn User
-              </a>
-            {% endif %}
-
-            {% if current_user.is_authenticated and current_user.id == post.author.id %}
-              <a class="btn btn-primary me-2" href="{{ url_for('edit_post', post_id=post.id) }}">
-                Edit Post
-              </a>
-            {% endif %}
-
-            {% if current_user.is_authenticated and (current_user.id == post.author.id or current_user.role == "admin") %}
-              <form
-                method="POST"
-                action="{{ url_for('delete_post', post_id=post.id) }}"
-                class="d-inline"
-                onsubmit="return confirm('Are you sure you want to delete this post?');"
-              >
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-danger">
-                  Delete Post
-                </button>
-              </form>
-            {% endif %}
-
+          {% if current_user.is_authenticated and current_user.role == "admin" %}
+          <a
+            class="btn btn-warning me-2"
+            href="{{ url_for('warn_post_author', post_id=post.id) }}"
+            >Warn User</a
+          >
+          {% endif %} 
+          
+          {% if current_user.is_authenticated and current_user.id == post.author.id %}
+          <a
+            class="btn btn-primary me-2"
+            href="{{ url_for('edit_post', post_id=post.id) }}"
+            >Edit Post</a
+          >
+          {% endif %} 
+          
+          {% if current_user.is_authenticated and (current_user.id == post.author.id or current_user.role == "admin") %}
+          <form
+            method="POST"
+            action="{{ url_for('delete_post', post_id=post.id) }}"
+            class="d-inline"
+            onsubmit="return confirm('Are you sure you want to delete this post?');"
+          >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="btn btn-danger">Delete Post</button>
+          </form>
+          {% endif %}
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
+        {% with messages = get_flashed_messages(with_categories=true) %} 
+          {% if messages %} 
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            
+            {% if category == 'success' %}
+                <div id="flash-success" style="display: none;"></div>
+            {% else %}
+                <div
+                  class="alert alert-{{ category }} alert-dismissible fade show"
+                  role="alert"
+                >
+                  {{ message }}
+                  <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="alert"
+                  ></button>
+                </div>
+            {% endif %}
+
+            {% endfor %} 
+          {% endif %} 
+        {% endwith %} 
+        
+        {% if post.can_comment %} 
+          {% if current_user.is_authenticated %}
+          <div id="comment-form-section" class="mb-5">
+            <h5 class="fw-bold mb-3">Leave a Comment</h5>
+  
+            <form
+              method="POST"
+              action="{{ url_for('show_post', post_id=post.id) }}"
+              novalidate
+            >
+              {{ form.hidden_tag() }}
+              
+              <div
+                id="reply-badge"
+                class="alert alert-info py-2 px-3 justify-content-between align-items-center mb-2"
+                style="display: none"
+              >
+                <small>
+                  Replying to
+                  <span id="reply-to-name" class="fw-bold">...</span>
+                  <span id="reply-to-username" class="small opacity-75">...</span>
+                </small>
+                <button
+                  type="button"
+                  class="btn-close btn-close-white small"
+                  onclick="cancelReply()"
+                  aria-label="Close"
+                ></button>
               </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
-        {% if current_user.is_authenticated %}
-          <form method="POST" action="{{ url_for('show_post', post_id=post.id) }}" novalidate>
-            {{ form.hidden_tag() }}
-
-            <div class="mb-3">
-              {{ form.comment_text.label(class="form-label") }}
-              
-              {{ form.comment_text(class="form-control", id="comment_text") }}
-              
-              {% if form.comment_text.errors %}
+  
+              <div class="mb-3">
+                {{ form.comment_text(class="form-control", id="comment_text") }}
+                {% if form.comment_text.errors %}
                 <div class="text-danger">
                   {% for error in form.comment_text.errors %}
-                    <small>{{ error }}</small>
+                  <small>{{ error }}</small>
                   {% endfor %}
                 </div>
-              {% endif %}
+                {% endif %}
+              </div>
+  
+              <div class="d-flex justify-content-end gap-2">
+                <button 
+                  type="button" 
+                  class="btn btn-outline-secondary" 
+                  id="cancel-btn"
+                  style="display: none;" 
+                  onclick="cancelReply()"
+                >
+                  Cancel
+                </button>
+                
+                <button type="submit" class="btn btn-primary" id="submit-btn">
+                  Submit Comment
+                </button>
+              </div>
+
+            </form>
+          </div>
+  
+          {% else %}
+          <div class="card bg-light border-0 mt-4 mb-5">
+            <div class="card-body text-center py-4">
+              <h5 class="card-title text-muted mb-3">Join the conversation</h5>
+              <p class="card-text mb-3">
+                Leave a comment and share your thoughts with the community.
+              </p>
+              <a
+                href="{{ url_for('login_get') }}"
+                class="btn btn-primary px-4 rounded-pill"
+                >Log In to Comment</a
+              >
+            </div>
+          </div>
+          {% endif %} 
+        {% else %}
+        <div
+          class="text-center py-5 text-muted fst-italic border-top border-bottom mb-4"
+        >
+          <i class="bi bi-chat-slash fs-2 mb-2"></i><br />
+          Comments are turned off for this post.
+        </div>
+        {% endif %} 
+        
+        {% macro render_comment(comment, depth) %}
+        <div id="comment-{{ comment.id }}" class="mb-3">
+            
+            <div class="d-flex">
+                <div class="flex-shrink-0">
+                    <img class="rounded-circle shadow-sm" src="{{ comment.comment_author.email | gravatar }}" alt="Avatar" width="40" height="40"/>
+                </div>
+                
+                <div class="ms-2 w-100">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        
+                        <div class="d-flex align-items-center">
+                            
+                            <div class="d-flex flex-column me-3">
+                                <span class="fw-bold text-dark" style="font-size: 0.9rem;">{{ comment.comment_author.name }}</span>
+                                <span class="text-muted" style="font-size: 0.75rem;">@{{ comment.comment_author.username }}</span>
+                            </div>
+
+                            {% if current_user.is_authenticated and (current_user.id == comment.comment_author.id or current_user.role == "admin") %}
+                            <form method="POST" action="{{ url_for('delete_comment', comment_id=comment.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this comment?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-danger btn-sm py-0 px-2 shadow-none" style="font-size: 0.65rem; border-radius: 4px;">Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        
+                        {% if post.can_comment and current_user.is_authenticated %}
+                        <button class="btn btn-link btn-sm text-decoration-none p-0" 
+                                onclick="setReply('{{ comment.id }}', '{{ comment.comment_author.name }}', '{{ comment.comment_author.username }}')">
+                            <i class="bi bi-reply-fill small"></i> <span class="small">Reply</span>
+                        </button>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="text-break small mb-2">
+                        {{ comment.text | safe }}
+                    </div>
+
+                    {% if comment.replies %}
+                        <div class="mt-1">
+                            <button class="btn btn-link btn-sm text-decoration-none p-0 text-muted fw-bold d-flex align-items-center" 
+                                    onclick="toggleReplies('{{ comment.id }}', {{ comment.replies|length }})" 
+                                    id="btn-replies-{{ comment.id }}"
+                                    style="font-size: 0.8rem;">
+                                <i class="bi bi-chevron-down me-1"></i>
+                                <span>Show {{ comment.replies|length }} Replies</span>
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">
-              Submit Comment
-            </button>
-          </form>
-        {% else %}
-        <div class="card bg-light border-0 mt-4">
-          <div class="card-body text-center py-4">
-            <h5 class="card-title text-muted mb-3">Join the conversation</h5>
-            <p class="card-text mb-3">Leave a comment and share your thoughts with the community.</p>
-            <a href="{{ url_for('login_get') }}" class="btn btn-primary px-4 rounded-pill">
-              Log In to Comment
-            </a>
-          </div>
+            {% if comment.replies %}
+                <div id="replies-{{ comment.id }}" class="mt-2 ms-4 ps-2 border-start" style="display: none;">
+                    {% for reply in comment.replies %}
+                        {{ render_comment(reply, depth + 1) }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+
         </div>
-        {% endif %}
+        {% endmacro %}
 
         <div class="mt-5 mb-4">
           <h3 class="border-bottom pb-2">
-              Comments 
-              <span class="text-muted" style="font-size: 0.8em;">({{ post.comments|length }})</span>
+            Comments
+            <span class="text-muted fs-5">({{ post.comments|length }})</span>
           </h3>
-      </div>
-
-        <div class="comment">
-          <ul class="commentList">
-            {% for comment in post.comments %}
-              <li class="mb-4">
-                <div class="commenterImage">
-                  <img src="{{ comment.comment_author.email | gravatar }}" />
-                </div>
-                <div class="commentText">
-                  <span class="sub-text">{{ comment.comment_author.name }}
-                    {% if current_user.is_authenticated and (current_user.id == comment.comment_author.id or current_user.role == "admin") %}
-                      <form
-                        method="POST"
-                        action="{{ url_for('delete_comment', comment_id=comment.id) }}"
-                        class="d-inline"
-                        onsubmit="return confirm('Are you sure you want to delete this comment?');"
-                      >
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        
-                        <button
-                          type="submit"
-                          class="btn btn-danger btn-sm ms-2"
-                          style="font-size: 0.6rem; padding: 2px 6px;"
-                        >
-                          Delete
-                        </button>
-                        
-                      </form>
-                    {% endif %}
-                  </span>
-                  {{ comment.text | safe }}
-                </div>
-              </li>
-            {% endfor %}
-          </ul>
         </div>
 
+        <div class="comment-section">
+          {% for comment in post.comments %} {% if comment.parent_id == None %}
+          {{ render_comment(comment, 0) }} {% endif %} {% endfor %}
+        </div>
       </div>
     </div>
   </div>
 </article>
-{% endblock %}
+{% endblock %} 
 
 {% block scripts %}
-<script src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+<script
+  src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js"
+  referrerpolicy="origin"
+></script>
 
 <script>
   tinymce.init({
-    selector: '#comment_text',
+    selector: "#comment_text",
     height: 300,
-    menubar: false, // Cleaner for comments
+    menubar: false,
     statusbar: false,
-    // Lighter plugins including Emoticons for social interaction
     plugins: [
-      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-      'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-      'media', 'table', 'help', 'wordcount', 'emoticons'
+      "advlist",
+      "autolink",
+      "lists",
+      "link",
+      "image",
+      "charmap",
+      "preview",
+      "anchor",
+      "searchreplace",
+      "visualblocks",
+      "code",
+      "fullscreen",
+      "media",
+      "table",
+      "help",
+      "wordcount",
+      "emoticons",
     ],
-    // Simplified Toolbar for users
-    toolbar: 'bold italic | alignleft aligncenter alignright | ' +
-      'bullist numlist | link image emoticons',
-    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
-    
+    toolbar:
+      "bold italic | alignleft aligncenter alignright | " +
+      "bullist numlist | link image emoticons",
+    content_style:
+      "body { font-family:Helvetica,Arial,sans-serif; font-size:14px }",
     image_title: true,
     automatic_uploads: true,
-    file_picker_types: 'image',
+    file_picker_types: "image",
+  });
+
+  function setReply(commentId, authorName, authorUsername) {
+    document.getElementById("parent_id").value = commentId;
+
+    const badge = document.getElementById("reply-badge");
+    document.getElementById("reply-to-name").innerText = authorName;
+    
+    document.getElementById("reply-to-username").innerText = '(@' + authorUsername + ')';
+
+    badge.style.display = "flex";
+
+    document.getElementById("cancel-btn").style.display = "block"; 
+    document.getElementById("submit-btn").innerText = "Submit Reply"; 
+
+    document
+      .getElementById("comment-form-section")
+      .scrollIntoView({ behavior: "smooth" });
+
+    if (tinymce.get("comment_text")) {
+      tinymce.get("comment_text").focus();
+    }
+  }
+
+  function cancelReply() {
+    document.getElementById("parent_id").value = "";
+    document.getElementById("reply-badge").style.display = "none";
+    
+    document.getElementById("cancel-btn").style.display = "none"; 
+    document.getElementById("submit-btn").innerText = "Submit Comment"; 
+  }
+
+  function toggleReplies(commentId, count) {
+      const container = document.getElementById('replies-' + commentId);
+      const btn = document.getElementById('btn-replies-' + commentId);
+      const icon = btn.querySelector('i');
+      const textSpan = btn.querySelector('span');
+
+      if (container.style.display === 'none') {
+          container.style.display = 'block';
+          textSpan.innerText = 'Hide Replies';
+          icon.className = 'bi bi-chevron-up me-1';
+      } else {
+          container.style.display = 'none';
+          textSpan.innerText = 'Show ' + count + ' Replies';
+          icon.className = 'bi bi-chevron-down me-1';
+      }
+  }
+
+  // --- Dynamic Scroll Detection & Animation ---
+  document.addEventListener("DOMContentLoaded", function() {
+      // 1. Check if the 'flash-success' alert exists (signals a fresh submit)
+      const successMessage = document.getElementById('flash-success');
+
+      // 2. Only run scroll logic if we have the success flag AND a hash anchor
+      if (successMessage && window.location.hash) {
+          const targetId = window.location.hash.substring(1); 
+          const targetElement = document.getElementById(targetId);
+
+          if (targetElement) {
+              let currentElement = targetElement;
+              
+              // Walk up the DOM to open all parent folders
+              while (currentElement) {
+                  const parentContainer = currentElement.closest('div[id^="replies-"]');
+                  
+                  if (!parentContainer) {
+                      break;
+                  }
+
+                  if (parentContainer.style.display === 'none') {
+                      parentContainer.style.display = 'block';
+                      
+                      const parentCommentId = parentContainer.id.replace('replies-', '');
+                      const btn = document.getElementById('btn-replies-' + parentCommentId);
+                      
+                      if (btn) {
+                          const icon = btn.querySelector('i');
+                          const textSpan = btn.querySelector('span');
+                          textSpan.innerText = 'Hide Replies';
+                          icon.className = 'bi bi-chevron-up me-1';
+                      }
+                  }
+                  currentElement = parentContainer.parentElement;
+              }
+              
+              // 3. Initiate Scroll
+              targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+              // 4. Dynamic Wait: Check scroll position every 50ms
+              let lastPos = window.scrollY;
+              let checkCount = 0; // Safety valve to prevent infinite loop
+
+              const checkIfScrollDone = setInterval(() => {
+                  const currentPos = window.scrollY;
+                  checkCount++;
+                  
+                  // If position hasn't changed since last check (and we've waited at least 100ms)
+                  // OR if we've waited too long (e.g., 3 seconds max safety)
+                  if ((lastPos === currentPos && checkCount > 2) || checkCount > 60) {
+                      clearInterval(checkIfScrollDone);
+                      targetElement.classList.add('highlight-anim');
+                  }
+                  
+                  lastPos = currentPos;
+              }, 50); 
+          }
+      }
   });
 </script>
 {% endblock %}

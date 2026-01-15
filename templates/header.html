@@ -2,21 +2,25 @@
   <div class="container px-4 px-lg-5">
     <a class="navbar-brand" href="{{ url_for('get_all_posts') }}">Start Blog</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
-      Menu <i class="fas fa-bars"></i>
+      Menu <i class="bi bi-list"></i>
     </button>
     <div class="collapse navbar-collapse" id="navbarResponsive">
       
-      <ul class="navbar-nav ms-auto py-4 py-lg-0">
+      <ul class="navbar-nav ms-auto py-4 py-lg-0 align-items-center">
         <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
         {% if not current_user.is_authenticated %}
         <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a></li>
         <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Support</a></li>
         {% else %}
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_user_posts') }}">My Posts</a></li>
+        <li class="nav-item">
+          <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('user_profile', username=current_user.username) }}">
+              Profile
+          </a>
+      </li>
         <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
+        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
         {% endif %}
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Contact</a></li>
-      </ul>
 
       {% if request.endpoint in ['get_all_posts', 'get_user_posts', 'search'] %}
       
@@ -86,7 +90,7 @@
                         </div>
                     </div>
                     <div class="form-text x-small mt-2">
-                        Fill any combination (e.g. Year only, or Year + Month).
+                        Fill any combination (e.g. Year only, or Year + Month, Year + Month + Day).
                     </div>
                 </li>
 
