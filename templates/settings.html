@@ -148,6 +148,25 @@
             </div>
           </div>
 
+          <h5 class="fw-bold mb-3 mt-5 border-bottom pb-2">Privacy</h5>
+
+          <div class="card border-0 shadow-sm bg-body-tertiary mb-4">
+            <div class="card-body">
+              <div class="form-check form-switch">
+                {{ form.allow_dms(class="form-check-input", style="cursor:
+                pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
+                <div class="ms-2">
+                  <label class="form-check-label fw-bold" for="allow_dms"
+                    >Direct Messaging</label
+                  >
+                  <div class="text-muted small" style="line-height: 1.2">
+                    Allow other users to send me private messages. (Admins can always contact you).
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
             <a
               href="{{ url_for('get_all_posts') }}"

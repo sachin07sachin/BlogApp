@@ -109,6 +109,14 @@ class WarnUserForm(FlaskForm):
     message = TextAreaField("Warning Message", validators=[DataRequired()])
     submit = SubmitField("Send Warning Email")
 
+class MessageForm(FlaskForm):
+    message = TextAreaField(
+        'Message', 
+        validators=[DataRequired(), Length(min=1, max=1000)],
+        render_kw={"rows": 5, "placeholder": "Write your private message here..."}
+    )
+    submit = SubmitField('Send Message')
+
 class SettingsForm(FlaskForm):
     # --- IDENTITY ---
     username = StringField(
@@ -153,6 +161,13 @@ class SettingsForm(FlaskForm):
     # Toggle 3: Updates
     notify_post_edit = BooleanField(
         "Email me when a post is updated/edited",
+        render_kw={"class": "form-check-input"}
+    )
+    
+    # Toggle 4: DMs
+    allow_dms = BooleanField(
+        "Allow other users to send me private messages",
+        description="Admins can always message you regardless of this setting.",
         render_kw={"class": "form-check-input"}
     )
     

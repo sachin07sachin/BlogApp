@@ -126,7 +126,7 @@
           {% if user.about_me %}
             <p class="card-text text-muted mb-4 px-lg-5">{{ user.about_me }}</p>
           {% else %}
-          {% if current_user.is_authenticated and current_user.id == user.id %}
+            {% if current_user.is_authenticated and current_user.id == user.id %}
             <p class="card-text text-muted fst-italic mb-4">
               You have not written a bio yet.
             </p>
@@ -138,25 +138,36 @@
           {% endif %} 
           
           {% if current_user.is_authenticated and current_user.id == user.id %}
-          <div class="d-flex justify-content-center gap-4 text-muted small">
-            <div>
-              <i class="bi bi-pen-fill me-1"></i>
-              <span class="fw-bold">{{ posts|length }}</span> Posts
+            <div class="d-flex justify-content-center gap-4 text-muted small mb-3">
+               <div>
+                  <i class="bi bi-pen-fill me-1"></i>
+                  <span class="fw-bold">{{ posts|length }}</span> Posts
+               </div>
             </div>
-          </div>
             <a
               href="{{ url_for('settings') }}"
               class="btn btn-outline-primary btn-sm rounded-pill px-4"
             >
               <i class="bi bi-pencil-square me-1"></i> Edit Profile
             </a>
+
           {% else %}
-            <div class="d-flex justify-content-center gap-4 text-muted small">
+            <div class="d-flex justify-content-center gap-4 text-muted small mb-3">
               <div>
                 <i class="bi bi-pen-fill me-1"></i>
                 <span class="fw-bold">{{ posts|length }}</span> Posts
               </div>
             </div>
+
+            {% if can_message %}
+                <a
+                  href="#" 
+                  class="btn btn-primary btn-sm rounded-pill px-4"
+                >
+                  <i class="bi bi-chat-dots-fill me-1"></i> Message Author
+                </a>
+            {% endif %}
+
           {% endif %}
         </div>
       </div>

@@ -26,7 +26,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, text, or_, extract, func, select, desc
+from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, text, or_, extract, func, select, desc
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -172,6 +172,10 @@ class User(UserMixin, db.Model):
     
     # NEW: Notify on Edit
     notify_post_edit: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    # --- NEW: Privacy Setting (In-App Messaging) ---
+    # Default True = Open to DMs. False = Closed (except Admin).
+    allow_dms: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     
     # --- SECURITY ---
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
@@ -182,6 +186,26 @@ class User(UserMixin, db.Model):
     # --- RELATIONSHIPS ---
     posts = relationship("BlogPost", back_populates="author", passive_deletes=True)
     comments = relationship("Comment", back_populates="comment_author", passive_deletes=True)
+
+    # --- MESSAGING RELATIONSHIPS (GHOST USER COMPATIBLE) ---
+    # We DO NOT use 'cascade="all, delete-orphan"' here.
+    # This allows the message to survive even if the User row is logically "deleted" or anonymized.
+    messages_sent = relationship(
+        "Message", 
+        foreign_keys="Message.sender_id", 
+        back_populates="sender", 
+        lazy="dynamic"
+    )
+    messages_received = relationship(
+        "Message", 
+        foreign_keys="Message.recipient_id", 
+        back_populates="recipient", 
+        lazy="dynamic"
+    )
+
+    # Helper method to count unread messages
+    def new_messages(self):
+        return Message.query.filter_by(recipient=self, is_read=False).count()
 
 
 class BlogPost(db.Model):
@@ -229,6 +253,30 @@ class Comment(db.Model):
     # 2. 'parent': Gets the single comment that this comment is replying to
     # remote_side=[id] is REQUIRED for self-referencing tables
     parent = relationship("Comment", back_populates="replies", remote_side=[id])
+
+
+# --- NEW: MESSAGE MODEL ---
+class Message(db.Model):
+    __tablename__ = 'messages'
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # --- FOREIGN KEYS (GHOST USER COMPATIBLE) ---
+    # We REMOVED 'ondelete="CASCADE"'. 
+    # This protects the chat history from being accidentally wiped by the database.
+    sender_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
+    recipient_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
+    
+    body: Mapped[str] = mapped_column(String(1000), nullable=False) # Good length for DMs
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, default=func.now())
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # Relationships
+    sender = relationship("User", foreign_keys=[sender_id], back_populates="messages_sent")
+    recipient = relationship("User", foreign_keys=[recipient_id], back_populates="messages_received")
+
+    def __repr__(self):
+        return f'<Message {self.body}>'
 
 # -------------------------------------------------------------------
 # 4. CORE DECORATORS & CLI
@@ -1061,10 +1109,11 @@ def settings():
         current_user.name = form.name.data
         current_user.about_me = form.about_me.data
         
-        # 3. Update Notification Preferences
+        # 3. Update Notification & Privacy Preferences
         current_user.notify_on_comments = form.notify_on_comments.data
         current_user.notify_new_post = form.notify_new_post.data
-        current_user.notify_post_edit = form.notify_post_edit.data # <--- NEW: Updates the 3rd toggle
+        current_user.notify_post_edit = form.notify_post_edit.data
+        current_user.allow_dms = form.allow_dms.data # <--- NEW: Saves Privacy Setting
         
         # 4. Commit Changes
         db.session.commit()
@@ -1081,7 +1130,8 @@ def settings():
         # Pre-fill the Toggles
         form.notify_on_comments.data = current_user.notify_on_comments
         form.notify_new_post.data = current_user.notify_new_post
-        form.notify_post_edit.data = current_user.notify_post_edit # <--- NEW: Pre-fills the 3rd toggle
+        form.notify_post_edit.data = current_user.notify_post_edit
+        form.allow_dms.data = current_user.allow_dms # <--- NEW: Pre-fills Privacy Setting
         
     return render_template("settings.html", form=form)
 
@@ -1098,8 +1148,15 @@ def user_profile(username):
     # 2. Fetch posts written by this user, newest first
     posts = BlogPost.query.filter_by(author=user).order_by(BlogPost.date.desc()).all()
     
-    # 3. Render the template
-    return render_template("profile.html", user=user, posts=posts)
+    # 3. Determine Messaging Permissions
+    can_message = False
+    if current_user.is_authenticated and current_user.id != user.id:
+        # Allow if User allows DMs OR if Viewer is an Admin
+        if user.allow_dms or current_user.role == "admin":
+            can_message = True
+            
+    # 4. Render the template
+    return render_template("profile.html", user=user, posts=posts, can_message=can_message)
 
 @app.route("/my-posts")
 @login_required
