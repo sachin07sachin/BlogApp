@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block header %}
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+    <div class="container position-relative px-4 px-lg-5">
+        <div class="row gx-4 gx-lg-5 justify-content-center">
+            <div class="col-md-10 col-lg-8 col-xl-7">
+                <div class="page-heading">
+                    <h1>Privacy Policy</h1>
+                    <span class="subheading">How we handle your data</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<style>
+    /* Scoped styling for the Privacy Document */
+    .policy-card .section-heading {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        color: #212529;
+        display: flex;
+        align-items: center;
+    }
+    .policy-card .section-heading i {
+        font-size: 1.2rem;
+        color: #0085A1; /* Brand Teal */
+        margin-right: 10px;
+    }
+    .policy-card ul li {
+        margin-bottom: 0.5rem;
+        position: relative;
+    }
+    /* Add subtle separator between sections */
+    .policy-section {
+        border-bottom: 1px solid #f0f0f0;
+        padding-bottom: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .policy-section:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0;
+    }
+</style>
+
+<main class="mb-4">
+    <div class="container px-4 px-lg-5">
+        <div class="row gx-4 gx-lg-5 justify-content-center">
+            <div class="col-md-10 col-lg-8 col-xl-7">
+
+                <div class="mb-2">
+                    <a href="{{ url_for('get_all_posts') }}" 
+                       onclick="if(document.referrer && document.referrer.indexOf(window.location.host) !== -1) { history.back(); return false; }" 
+                       class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm">
+                       <i class="bi bi-arrow-left me-1"></i> Back
+                    </a>
+                </div>
+                
+                <div class="card border-0 shadow rounded-3 policy-card">
+                    <div class="card-body p-4 p-sm-5">
+                        
+                        {#<p class="text-muted fst-italic mb-5">Last updated: January 2026</p>#}
+
+                        <div class="policy-section">
+                            <h2 class="section-heading">
+                                <i class="bi bi-person-vcard"></i> 1. Information We Collect
+                            </h2>
+                            <p class="text-muted">We collect information you provide directly to us when you create an account, specifically:</p>
+                            <ul>
+                                <li>Your name and email address.</li>
+                                <li>The content you create (blog posts and comments).</li>
+                                <li>Your communications with us (contact forms).</li>
+                            </ul>
+                        </div>
+
+                        <div class="policy-section">
+                            <h2 class="section-heading">
+                                <i class="bi bi-activity"></i> 2. How We Use Your Information
+                            </h2>
+                            <p class="text-muted">We use the information we collect to:</p>
+                            <ul>
+                                <li>Provide, maintain, and improve our services.</li>
+                                <li>Send you technical notices, updates, and support messages.</li>
+                                <li>Send you the "Daily Digest" of unread activity (if you have opted in).</li>
+                                <li>Monitor and prevent fraud, spam, and abuse.</li>
+                            </ul>
+                        </div>
+
+                        <div class="policy-section">
+                            <h2 class="section-heading">
+                                <i class="bi bi-shield-lock"></i> 3. Data Storage & Security
+                            </h2>
+                            <p class="text-muted">Your data is stored securely in our database. We use industry-standard encryption (hashing) for passwords. We do not sell your personal data to third parties.</p>
+                        </div>
+
+                        <div class="policy-section">
+                            <h2 class="section-heading">
+                                <i class="bi bi-sliders"></i> 4. Your Choices
+                            </h2>
+                            <p class="text-muted">You may update or correct your account information at any time by logging into your account settings. You may also unsubscribe from our Daily Digest emails by clicking the link in the email footer.</p>
+                        </div>
+
+                        <div class="policy-section">
+                            <h2 class="section-heading">
+                                <i class="bi bi-envelope-paper"></i> 5. Contact Us
+                            </h2>
+                            <p class="text-muted mb-0">If you have any questions about this Privacy Policy, please contact us via the <a href="{{ url_for('contact') }}" class="text-decoration-none fw-bold" style="color: #0085A1;">Contact Page</a>.</p>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

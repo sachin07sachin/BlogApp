@@ -1,113 +1,112 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <title>New Contact Message</title>
     <style>
-        /* Base styles for responsiveness */
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #f4f4f7;
-            color: #51545E;
+        /* --- GLOBAL RESETS --- */
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
+        
+        /* --- LIGHT MODE (DEFAULT) --- */
+        body { background-color: #f4f4f7; color: #333; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        
+        /* HEADER - Dark for Admin Context */
+        .header { background-color: #343a40; padding: 25px 40px; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 20px; font-weight: normal; }
+        .tag { background: #ffc107; color: #333; font-size: 11px; padding: 4px 8px; border-radius: 4px; vertical-align: middle; margin-left: 10px; font-weight: bold; }
+        
+        .content { padding: 40px; }
+        .footer { background-color: #f9f9f9; padding: 20px; text-align: center; font-size: 12px; color: #989ea4; border-top: 1px solid #eaeaec; }
+        
+        /* --- DATA TABLE STYLE --- */
+        .data-row { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .label { display: block; font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; letter-spacing: 0.5px; }
+        .value { font-size: 16px; color: #333; font-weight: 500; }
+        
+        .message-box { background: #f8f9fa; border-left: 4px solid #007bff; padding: 20px; margin-top: 10px; font-style: italic; color: #555; border-radius: 4px; }
+        
+        /* Button - Dark Gray */
+        .btn { display: inline-block; background-color: #343a40; color: #ffffff !important; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-size: 14px; font-weight: bold; }
+        .btn:hover { background-color: #23272b; }
+
+        /* --- DARK MODE OVERRIDES --- */
+        @media (prefers-color-scheme: dark) {
+            body, .wrapper { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
+            .container { background-color: #2d2d2d !important; box-shadow: none !important; }
+            .header { background-color: #000 !important; } 
+            .content { color: #e0e0e0 !important; }
+            .footer { background-color: #252525 !important; border-top: 1px solid #333 !important; color: #888 !important; }
+            .data-row { border-bottom: 1px solid #444 !important; }
+            .label { color: #aaa !important; }
+            .value { color: #fff !important; }
+            .message-box { background-color: #333 !important; color: #ccc !important; border-left: 4px solid #0d6efd !important; }
+            .btn { background-color: #444 !important; }
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
-        .content-card {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            padding: 30px;
-            overflow: hidden;
-        }
-        .header {
-            border-bottom: 1px solid #eaeaec;
-            padding-bottom: 20px;
-            margin-bottom: 20px;
-        }
-        .header h2 {
-            margin: 0;
-            color: #333333;
-            font-size: 24px;
-        }
-        .details-row {
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        .label {
-            font-weight: bold;
-            color: #333333;
-            display: inline-block;
-            width: 80px;
-        }
-        .message-box {
-            background-color: #f9f9f9;
-            border-left: 4px solid #007bff; /* Blue accent border */
-            padding: 15px 20px;
-            margin-top: 25px;
-            border-radius: 4px;
-            font-size: 16px;
-            line-height: 1.6;
-            color: #333;
-        }
-        .footer {
-            text-align: center;
-            font-size: 12px;
-            color: #a8aaaf;
-            margin-top: 20px;
-        }
-        a {
-            color: #007bff;
-            text-decoration: none;
+
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media screen and (max-width: 600px) {
+            .content { padding: 20px !important; }
+            .header { padding: 20px !important; }
+            .btn { display: block; width: 100%; text-align: center; box-sizing: border-box; }
         }
     </style>
 </head>
 <body>
+    <div class="wrapper">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="padding-top: 40px;">
+                    <div class="container">
+                        
+                        <div class="header">
+                            <h1>Contact Form <span class="tag">NEW</span></h1>
+                        </div>
 
-    <div class="container">
-        <div class="content-card">
-            
-            <div class="header">
-                <h2>New Contact Message</h2>
-            </div>
+                        <div class="content">
+                            
+                            <div class="data-row">
+                                <span class="label">From</span>
+                                <span class="value">{{ name }}</span>
+                            </div>
+                            
+                            <div class="data-row">
+                                <span class="label">Email</span>
+                                <span class="value">
+                                    <a href="mailto:{{ email }}" style="color: #007bff; text-decoration: none;">{{ email }}</a>
+                                </span>
+                            </div>
 
-            <div class="details-row">
-                <span class="label">Name:</span>
-                <span>{{ name }}</span>
-            </div>
+                            <div class="data-row">
+                                <span class="label">Phone</span>
+                                <span class="value">{{ phone }}</span>
+                            </div>
 
-            <div class="details-row">
-                <span class="label">Email:</span>
-                <span><a href="mailto:{{ email }}">{{ email }}</a></span>
-            </div>
+                            <div class="data-row" style="border: none;">
+                                <span class="label">Message</span>
+                                <div class="message-box">
+                                    "{{ message }}"
+                                </div>
+                            </div>
 
-            <div class="details-row">
-                <span class="label">Phone:</span>
-                <span>{{ phone }}</span>
-            </div>
+                            <div style="text-align: center; margin-top: 30px;">
+                                <a href="mailto:{{ email }}?subject=Re: Your Contact Request" class="btn">Reply to {{ name }}</a>
+                            </div>
+                        </div>
 
-            <div class="message-box">
-                <strong>Message:</strong><br><br>
-                {{ message }}
-            </div>
+                        <div class="footer">
+                            <p>Sent via your website contact form.</p>
+                            <p style="margin-top: 10px;">&copy; {{ current_year }} Blog App Inc.</p>
+                        </div>
 
-            <div style="margin-top: 30px; text-align: center;">
-                <a href="mailto:{{ email }}?subject=Re: Your Contact Request" 
-                   style="background-color: #007bff; color: white; padding: 12px 25px; border-radius: 5px; text-decoration: none; font-weight: bold;">
-                   Reply to {{ name }}
-                </a>
-            </div>
-
-        </div>
-
-        <div class="footer">
-            <p>Sent from your website contact form.</p>
-        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
-
 </body>
 </html>

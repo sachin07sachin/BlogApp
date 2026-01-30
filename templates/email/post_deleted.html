@@ -1,97 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <title>Post Removed</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #f4f4f7;
-            color: #51545E;
+        /* --- GLOBAL RESETS --- */
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
+        
+        /* --- LIGHT MODE (DEFAULT) --- */
+        body { background-color: #f4f4f7; color: #51545E; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        
+        /* HEADER - Red for Deletion/Danger */
+        .header { background-color: #dc3545; padding: 30px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
+        
+        .content { padding: 40px; }
+        .footer { background-color: #f9f9f9; padding: 30px 20px; text-align: center; font-size: 12px; color: #989ea4; border-top: 1px solid #eaeaec; }
+        
+        /* --- ELEMENTS --- */
+        .info-text { font-size: 16px; margin-bottom: 20px; color: #333; }
+        
+        /* Reason Box - Red Accent */
+        .reason-box { background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 20px; margin: 25px 0; border-radius: 4px; color: #555; font-style: italic; }
+        
+        .sub-text { font-size: 14px; color: #666; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        .sub-text a { color: #dc3545; text-decoration: underline; }
+
+        /* --- DARK MODE OVERRIDES --- */
+        @media (prefers-color-scheme: dark) {
+            body, .wrapper { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
+            .container { background-color: #2d2d2d !important; box-shadow: none !important; }
+            .content { color: #e0e0e0 !important; }
+            .header h1 { color: #ffffff !important; }
+            .footer { background-color: #252525 !important; border-top: 1px solid #333 !important; color: #888 !important; }
+            .info-text { color: #e0e0e0 !important; }
+            .reason-box { background-color: #333 !important; color: #ccc !important; border-left: 5px solid #ff6b6b !important; }
+            .sub-text { border-top: 1px solid #444 !important; color: #aaa !important; }
+            .sub-text a { color: #ff6b6b !important; }
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
-        .content-card {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            padding: 40px;
-            text-align: center;
-        }
-        /* Keeping .btn class available for consistency, though not used in this specific email */
-        .btn {
-            display: inline-block;
-            background-color: #007bff;
-            color: #ffffff;
-            text-decoration: none;
-            padding: 12px 30px;
-            border-radius: 5px;
-            font-weight: bold;
-            margin: 25px 0;
-            font-size: 16px;
-        }
-        .info-text {
-            font-size: 16px;
-            line-height: 1.6;
-            color: #333;
-            margin-bottom: 20px;
-        }
-        /* Specific style for the Reason Block */
-        .reason-box {
-            background-color: #f8f9fa; /* Light Gray */
-            border-left: 4px solid #dc3545; /* Red border to indicate deletion/alert */
-            padding: 15px;
-            margin: 20px 0;
-            text-align: left;
-            font-style: italic;
-            color: #555;
-            border-radius: 4px;
-        }
-        .footer {
-            text-align: center;
-            font-size: 12px;
-            color: #a8aaaf;
-            margin-top: 20px;
-            line-height: 1.5;
+
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media screen and (max-width: 600px) {
+            .content { padding: 20px !important; }
+            .header { padding: 20px !important; }
         }
     </style>
 </head>
 <body>
+    <div class="wrapper">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="padding-top: 40px;">
+                    <div class="container">
+                        
+                        <div class="header">
+                            <h1>Post Removed</h1>
+                        </div>
 
-    <div class="container">
-        <div class="content-card">
-            
-            <h2 style="color: #dc3545; margin-top: 0;">Post Removed</h2>
-            
-            <p class="info-text">Hello {{ user.name }},</p>
-            
-            <p class="info-text">
-                Your post titled <strong>"{{ post_title }}"</strong> has been removed by an administrator.
-            </p>
+                        <div class="content">
+                            <p class="info-text">Hello <strong>{{ user.name }}</strong>,</p>
+                            
+                            <p class="info-text">
+                                Your post titled <strong>"{{ post_title }}"</strong> has been removed by the administrator.
+                            </p>
 
-            <p style="font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #51545E;">Reason provided:</p>
-            
-            <div class="reason-box">
-                "{{ reason }}"
-            </div>
-            
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-            
-            <p class="info-text" style="font-size: 14px;">
-                If you have any questions regarding this action, please reply to this email.
-            </p>
+                            <p style="font-size: 14px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; color: #888; letter-spacing: 0.5px;">Reason provided:</p>
+                            
+                            <div class="reason-box">
+                                "{{ reason }}"
+                            </div>
+                            
+                            <p class="sub-text">
+                                If you have any questions regarding this action or if you believe this was done in error, <a href="{{ support_url }}">contact our support team</a>.
+                            </p>
+                        </div>
 
-        </div>
+                        <div class="footer">
+                            <p>Sent by <strong>Blog App Moderation Team</strong></p>
+                            <p>This is an automated system notice regarding your content.<br>
+                            Please do not reply directly to this email.</p>
+                            
+                            <div style="margin-top: 10px;">
+                                <a href="{{ guidelines_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Community Guidelines</a> • 
+                                <a href="{{ terms_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Terms of Service</a> •
+                                <a href="{{ support_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Support</a>
+                            </div>
+                            
+                            <p style="margin-top: 20px;">&copy; {{ current_year }} Blog App Inc.</p>
+                        </div>
 
-        <div class="footer">
-            <p>Best regards,<br>The Blog Team</p>
-        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
-
 </body>
 </html>

@@ -1,4 +1,24 @@
-{% extends "base.html" %} {% block header %}
+{% extends "base.html" %} {% block styles %}
+<style>
+  /* Consistent Footer Link Styling */
+  .auth-link {
+    color: #0085a1; /* Your theme teal */
+    font-weight: 600;
+    transition: all 0.2s ease;
+    text-decoration: none;
+  }
+
+  .auth-link:hover {
+    color: #005f73;
+    text-decoration: underline !important;
+  }
+
+  .instruction-text {
+    color: #6c757d;
+    font-size: 0.95rem;
+  }
+</style>
+{% endblock %} {% block header %}
 <header
   class="masthead"
   style="background-image: url('{{ url_for('static', filename='assets/img/login-bg.jpg') }}')"
@@ -17,7 +37,6 @@
 <main class="mb-4">
   <div class="container">
     <div class="row justify-content-center">
-      <!-- Flash Messages -->
       <div class="col-lg-8 col-md-10">
         {% with messages = get_flashed_messages(with_categories=true) %} {% if
         messages %} {% for category, message in messages %}
@@ -35,41 +54,97 @@
         {% endfor %} {% endif %} {% endwith %}
       </div>
 
-      <div class="col-lg-8 col-md-10 mx-auto">
-        <p>Haven't verified your email yet?</p>
+      <div class="col-lg-6 col-md-8 mx-auto">
+        <div class="card border-0 shadow rounded-3 my-3">
+          <div class="card-body p-4 p-sm-5">
+            <h3 class="card-title text-center mb-3 fw-light fs-4">
+              Resend Link
+            </h3>
+            <p class="text-center instruction-text mb-4">
+              Enter your email address and we'll send you a new verification
+              link to activate your account.
+            </p>
 
-        <form
-          method="POST"
-          action="{{ url_for('resend_verification_post') }}"
-          novalidate
-        >
-          {{ resend_form.hidden_tag() }}
+            <form
+              method="POST"
+              action="{{ url_for('resend_verification_post') }}"
+              novalidate
+            >
+              {{ resend_form.hidden_tag() }}
 
-          <div class="mb-3">
-            {{ resend_form.email.label(class="form-label") }} {{
-            resend_form.email(class="form-control", placeholder="Enter your " ~ "email") }} {% if resend_form.email.errors %}
-            <div class="text-danger">
-              {% for error in resend_form.email.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
+              <div class="form-floating mb-3">
+                {{ resend_form.email(class="form-control", placeholder="Enter
+                your email") }} {{ resend_form.email.label() }} {% if
+                resend_form.email.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in resend_form.email.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
+
+              {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
+              hcaptcha_site_key %}
+              <div class="mb-3 text-center">
+                <div
+                  class="h-captcha"
+                  data-sitekey="{{ hcaptcha_site_key }}"
+                ></div>
+                <script
+                  src="https://hcaptcha.com/1/api.js"
+                  async
+                  defer
+                ></script>
+              </div>
+              {% endif %}
+
+              <div class="d-grid mt-4">
+                <button
+                  type="submit"
+                  id="resendBtn"
+                  class="btn btn-primary btn-lg text-uppercase fw-bold"
+                  style="letter-spacing: 1px"
+                >
+                  Resend Verification Email
+                </button>
+              </div>
+            </form>
           </div>
 
-          {# 🔐 CAPTCHA — only when required #} {% if captcha_required and
-          hcaptcha_site_key %}
-          <div class="mb-3 text-center">
-            <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}"></div>
-            <script src="https://hcaptcha.com/1/api.js" async defer></script>
+          <div class="card-footer text-center py-4 border-0 bg-transparent">
+            <p class="small mb-0">
+              <i class="bi bi-arrow-left text-muted me-1"></i>
+              <a href="{{ url_for('login_get') }}" class="auth-link"
+                >Back to Log In</a
+              >
+            </p>
           </div>
-          {% endif %}
-
-          <button type="submit" id="resendBtn" class="btn btn-primary">
-            Resend Verification Email
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   </div>
 </main>
+{% endblock %} {% block scripts %}
+<script>
+  // --- AUTO-SCROLL TO ERRORS/ALERTS ---
+  document.addEventListener("DOMContentLoaded", () => {
+    // Target the main container to ensure we scroll high enough to see the alert
+    const mainContainer = document.querySelector("main");
+
+    // Check for Flash Messages (Bootstrap Alerts)
+    const hasFlashMessages = document.querySelector(".alert");
+
+    // Check for Validation Errors (Text Danger under email field)
+    const hasValidationErrors = document.querySelector(".text-danger");
+
+    // If the container exists AND (we have an alert OR a form error)
+    if (mainContainer && (hasFlashMessages || hasValidationErrors)) {
+      // Smoothly scroll to the top of the main section
+      mainContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+</script>
 {% endblock %}

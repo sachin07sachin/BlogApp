@@ -1,38 +1,334 @@
-{% extends "base.html" %} 
-
-{% block header %}
+{% extends "base.html" %} {% block header %}
 <style>
+  /* --- 1. AUTHOR & META LINKS --- */
   .author-link {
     color: white !important;
     text-decoration: none;
     font-weight: bold;
-    display: inline-block; /* Required for transform to work */
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy animation */
+    display: inline-block;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
 
   .author-link:hover {
-    color: white !important; /* Keep it white */
-    transform: scale(1.2); /* Make it 20% bigger */
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); /* Add a white glow */
+    color: white !important;
+    transform: scale(1.2);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
   }
 
-  /* --- NEW: Yellow Fade Animation (Industry Standard) --- */
+  /* --- 2. ARTICLE CARD (CONTAINER) --- */
+  /* Creates the "White Page" effect sitting on the gray background */
+  .article-card {
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06); /* Soft, premium shadow */
+    padding: 40px; /* Generous padding for a "book" feel */
+    margin-bottom: 3rem;
+    border: 1px solid rgba(0, 0, 0, 0.02);
+  }
+
+  /* Mobile Optimization: Reclaim space on small screens */
+  @media (max-width: 768px) {
+    .article-card {
+      padding: 20px;
+      border-radius: 12px;
+    }
+  }
+
+  /* --- 3. PREMIUM READING TYPOGRAPHY --- */
+  .article-content {
+    font-family: "Merriweather", "Georgia", serif;
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: #2d3748; /* Soft dark gray for less eye strain */
+    margin-bottom: 4rem;
+
+    /* FIX: Force text to wrap nicely and prevent horizontal overflow */
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  /* FIX: Force proper spacing between paragraphs (Solving the "Dense Text" issue) */
+  .article-content p {
+    margin-bottom: 1.5rem !important;
+    margin-top: 0;
+  }
+
+  /* --- HEADINGS --- */
+  /* Modern Sans-Serif for visual contrast against Serif body */
+  .article-content h1,
+  .article-content h2,
+  .article-content h3,
+  .article-content h4 {
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-weight: 700;
+    color: #1a202c;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    line-height: 1.3;
+  }
+
+  /* Hierarchy Sizing */
+  .article-content h1 {
+    font-size: 2rem;
+  }
+  .article-content h2 {
+    font-size: 1.75rem;
+    border-bottom: 1px solid #edf2f7;
+    padding-bottom: 0.5rem;
+  }
+  .article-content h3 {
+    font-size: 1.5rem;
+  }
+
+  /* --- LINKS --- */
+  /* Interactive thick underline effect */
+  .article-content a {
+    color: #0d6efd;
+    text-decoration: none;
+    background-image: linear-gradient(
+      to bottom,
+      rgba(13, 110, 253, 0.2) 0%,
+      rgba(13, 110, 253, 0.2) 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 100% 2px;
+    background-position: 0 100%;
+    transition: background-size 0.2s ease-in-out;
+  }
+  .article-content a:hover {
+    background-size: 100% 100%;
+    color: #fff;
+  }
+
+  /* --- BLOCKQUOTES --- */
+  .article-content blockquote {
+    font-style: italic;
+    font-size: 1.25rem;
+    border-left: 4px solid #0d6efd;
+    background: #f7fafc;
+    padding: 1.5rem 2rem;
+    margin: 2rem 0;
+    border-radius: 0 12px 12px 0;
+  }
+
+  /* --- IMAGES & ALIGNMENT --- */
+  .article-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  }
+
+  /* TinyMCE Support: Allow users to align images left/right */
+  .article-content img[style*="float: left"],
+  .article-content .alignleft {
+    float: left;
+    margin: 0.5rem 1.5rem 1rem 0;
+  }
+
+  .article-content img[style*="float: right"],
+  .article-content .alignright {
+    float: right;
+    margin: 0.5rem 0 1rem 1.5rem;
+  }
+
+  .article-content img[style*="display: block"],
+  .article-content .aligncenter {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Mobile Override: Force images to center/stack on small screens */
+  @media (max-width: 768px) {
+    .article-content img {
+      float: none !important;
+      display: block !important;
+      margin: 1.5rem auto !important;
+      width: 100%;
+    }
+  }
+
+  /* --- EDGE CASES: CODE & TABLES --- */
+  /* Prevents long code/tables from breaking the layout */
+  .article-content pre {
+    background: #f4f6f8;
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    white-space: pre;
+    border: 1px solid #e1e4e8;
+    margin-bottom: 1.5rem;
+  }
+
+  .article-content table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+  }
+
+  /* --- 4. ACTION BAR (Edit/Delete) --- */
+  .action-bar {
+    border-top: 1px solid #eaeaea;
+    padding-top: 2rem;
+    margin-top: 3rem;
+    margin-bottom: 3rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  /* --- 5. COMMENTS SECTION --- */
+
+  /* The "Window" Container */
+  .comments-scroll-window {
+    max-height: 600px;
+    overflow-y: auto;
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    padding: 25px;
+    margin-bottom: 3rem;
+    border: 1px solid rgba(0, 0, 0, 0.02);
+
+    /* Scrollbar Styling */
+    scrollbar-width: thin;
+    scrollbar-color: #adb5bd #ffffff;
+  }
+
+  .comments-scroll-window::-webkit-scrollbar {
+    width: 6px;
+  }
+  .comments-scroll-window::-webkit-scrollbar-track {
+    background: #ffffff;
+    border-radius: 16px;
+  }
+  .comments-scroll-window::-webkit-scrollbar-thumb {
+    background-color: #adb5bd;
+    border-radius: 10px;
+  }
+
+  /* User Links in Comments */
+  .comment-user-link {
+    color: #212529 !important;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .comment-user-link:hover {
+    color: #2f7ff9 !important;
+    transform: translateY(-2px);
+    text-shadow: 0 4px 8px rgba(13, 110, 253, 0.15);
+  }
+
+  /* Comment Bubbles */
+  .comment-bubble {
+    background-color: #f0f2f5;
+    border-radius: 16px;
+    padding: 6px 10px;
+    display: block;
+  }
+  .comment-bubble a {
+    text-decoration: none;
+  }
+
+  /* Fix: Remove huge margins from paragraphs inside bubbles */
+  .comment-bubble p {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-left: 10px;
+  }
+  .comment-bubble p:not(:last-child) {
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Mobile Nesting Fix: Prevent "Staircase Effect" */
+  @media (max-width: 768px) {
+    div[id^="replies-"] {
+      border-left: 2px solid #e9ecef !important;
+      margin-left: 0.5rem !important;
+      padding-left: 0.5rem !important;
+    }
+    .d-flex .flex-shrink-0 img {
+      width: 32px;
+      height: 32px;
+    }
+  }
+
+  /* --- 6. ANIMATIONS --- */
+
+  /* Yellow Fade (Deep Linking) */
   @keyframes highlightFade {
-      0% { 
-          background-color: rgba(255, 243, 205, 1); /* Soft Yellow (Bootstrap warning-bg color) */
-          box-shadow: 0 0 10px rgba(255, 243, 205, 0.5);
-      }
-      100% { 
-          background-color: transparent; 
-          box-shadow: none;
-      }
+    0% {
+      background-color: rgba(255, 243, 205, 1);
+      box-shadow: 0 0 10px rgba(255, 243, 205, 0.5);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: none;
+    }
+  }
+  .highlight-anim {
+    animation: highlightFade 2.5s ease-out forwards;
+    border-radius: 8px;
+    transition: background-color 0.5s;
   }
 
-  .highlight-anim {
-      animation: highlightFade 2.5s ease-out forwards; /* Runs for 2.5s then stops */
-      border-radius: 8px; /* Smooth corners during highlight */
-      transition: background-color 0.5s;
+  /* Delete Button (Lift & Glow) */
+  .delete-btn-anim {
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity: 0.85;
+    border: 1px solid transparent;
   }
+  .delete-btn-anim:hover {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 10px rgba(220, 53, 69, 0.25);
+  }
+  .delete-btn-anim:active {
+    transform: translateY(0) scale(0.95);
+    box-shadow: none;
+  }
+
+  /* --- SKELETON SHIMMER ANIMATION --- */
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .img-loading {
+    /* The Light Gray Background */
+    background: #f6f7f8;
+
+    /* The "Shine" Gradient */
+    background-image: linear-gradient(
+      to right,
+      #f6f7f8 0%,
+      #edeef1 20%,
+      #f6f7f8 40%,
+      #f6f7f8 100%
+    );
+
+    background-repeat: no-repeat;
+    background-size: 1000px 100%;
+    animation: shimmer 1.5s infinite linear;
+
+    /* Ensure it has a shape even before the image loads */
+    min-height: 200px;
+    display: block;
+  }
+
+  /* FORCE INSTANT SCROLLING */
+    html, body {
+        scroll-behavior: auto !important;
+    }
+
 </style>
 <header class="masthead" style="background-image: url('{{ post.img_url }}')">
   <div class="container position-relative px-4 px-lg-5">
@@ -46,225 +342,204 @@
             <a
               href="{{ url_for('user_profile', username=post.author.username) }}"
               class="fw-bold text-decoration-none author-link"
+              >{{ post.author.name }}</a
             >
-              {{ post.author.name }}
-            </a>
-            on {{ post.date.strftime('%B %d, %Y') }}
+            on
+            <span
+              class="smart-date"
+              data-utc="{{ post.date.isoformat() }}"
+              data-style="full"
+              >{{ post.date.strftime('%B %d, %Y') }}</span
+            >
           </span>
         </div>
       </div>
     </div>
   </div>
 </header>
-{% endblock %} 
-
-{% block content %}
-<article id="post-content">
+{% endblock %} {% block content %}
+<article>
   <div class="container px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
-      <div class="col-md-10 col-lg-8 col-xl-7">
-        {{ post.body | safe }}
+      <div class="col-md-10 col-lg-10 col-xl-8">
+        <div class="mb-2">
+          <div class="mb-2">
+            <a
+              href="{{ url_for('get_all_posts') }}"
+              onclick="
+                if (
+                  document.referrer &&
+                  document.referrer.indexOf(window.location.host) !== -1
+                ) {
+                  history.back();
+                  return false;
+                }
+              "
+              class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm"
+            >
+              <i class="bi bi-arrow-left me-1"></i> Back
+            </a>
+          </div>
+        </div>
 
-        <div class="d-flex justify-content-end mb-4">
-          {% if current_user.is_authenticated and current_user.role == "admin" %}
+        {% with messages = get_flashed_messages(with_categories=true,
+        category_filter=["success", "danger", "warning", "info"]) %} {% if
+        messages %} {% for category, message in messages %}
+        <div
+          class="alert alert-{{ category }} alert-dismissible fade show shadow-sm"
+          role="alert"
+        >
+          {{ message }}
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="alert"
+          ></button>
+        </div>
+        {% endfor %} {% endif %} {% endwith %}
+
+        <div class="article-card">
+          <div id="post-content" class="article-content">
+            {{ post.body | safe }}
+          </div>
+        </div>
+
+        <div class="action-bar">
+          {% if current_user.is_authenticated and current_user.role == "admin"
+          and current_user.id != post.author.id %}
           <a
-            class="btn btn-warning me-2"
+            class="btn btn-sm btn-warning rounded-pill px-3 fw-bold shadow-sm"
             href="{{ url_for('warn_post_author', post_id=post.id) }}"
-            >Warn User</a
           >
-          {% endif %} 
-          
-          {% if current_user.is_authenticated and current_user.id == post.author.id %}
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>Warn
+          </a>
+          {% endif %} {% if current_user.is_authenticated and current_user.id ==
+          post.author.id %}
           <a
-            class="btn btn-primary me-2"
+            class="btn btn-sm btn-primary rounded-pill px-3 fw-bold shadow-sm"
             href="{{ url_for('edit_post', post_id=post.id) }}"
-            >Edit Post</a
           >
-          {% endif %} 
-          
-          {% if current_user.is_authenticated and (current_user.id == post.author.id or current_user.role == "admin") %}
-          <form
-            method="POST"
-            action="{{ url_for('delete_post', post_id=post.id) }}"
-            class="d-inline"
-            onsubmit="return confirm('Are you sure you want to delete this post?');"
+            <i class="bi bi-pencil-square me-1"></i>Edit
+          </a>
+          {% endif %} {% if current_user.is_authenticated and (current_user.id
+          == post.author.id or current_user.role == "admin") %}
+          <button
+            type="button"
+            class="btn btn-sm btn-danger rounded-pill px-3 fw-bold shadow-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#deletePostModal"
+            data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
           >
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-            <button type="submit" class="btn btn-danger">Delete Post</button>
-          </form>
+            <i class="bi bi-trash-fill me-1"></i>Delete
+          </button>
           {% endif %}
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %} 
-          {% if messages %} 
-            {% for category, message in messages %}
-            
-            {% if category == 'success' %}
-                <div id="flash-success" style="display: none;"></div>
-            {% else %}
-                <div
-                  class="alert alert-{{ category }} alert-dismissible fade show"
-                  role="alert"
-                >
-                  {{ message }}
-                  <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="alert"
-                  ></button>
-                </div>
-            {% endif %}
+        {% if post.can_comment %} {% if current_user.is_authenticated %}
+        <div
+          id="comment-form-section"
+          class="mb-5 p-4 bg-light rounded-4 border border-light"
+        >
+          <h5 class="fw-bold mb-3 text-dark">Leave a Comment</h5>
 
-            {% endfor %} 
-          {% endif %} 
-        {% endwith %} 
-        
-        {% if post.can_comment %} 
-          {% if current_user.is_authenticated %}
-          <div id="comment-form-section" class="mb-5">
-            <h5 class="fw-bold mb-3">Leave a Comment</h5>
-  
-            <form
-              method="POST"
-              action="{{ url_for('show_post', post_id=post.id) }}"
-              novalidate
-            >
-              {{ form.hidden_tag() }}
-              
-              <div
-                id="reply-badge"
-                class="alert alert-info py-2 px-3 justify-content-between align-items-center mb-2"
-                style="display: none"
-              >
-                <small>
-                  Replying to
-                  <span id="reply-to-name" class="fw-bold">...</span>
-                  <span id="reply-to-username" class="small opacity-75">...</span>
-                </small>
-                <button
-                  type="button"
-                  class="btn-close btn-close-white small"
-                  onclick="cancelReply()"
-                  aria-label="Close"
-                ></button>
-              </div>
-  
-              <div class="mb-3">
-                {{ form.comment_text(class="form-control", id="comment_text") }}
-                {% if form.comment_text.errors %}
-                <div class="text-danger">
-                  {% for error in form.comment_text.errors %}
-                  <small>{{ error }}</small>
-                  {% endfor %}
-                </div>
-                {% endif %}
-              </div>
-  
-              <div class="d-flex justify-content-end gap-2">
-                <button 
-                  type="button" 
-                  class="btn btn-outline-secondary" 
-                  id="cancel-btn"
-                  style="display: none;" 
-                  onclick="cancelReply()"
-                >
-                  Cancel
-                </button>
-                
-                <button type="submit" class="btn btn-primary" id="submit-btn">
-                  Submit Comment
-                </button>
-              </div>
-
-            </form>
-          </div>
-  
+          {% with messages = get_flashed_messages(with_categories=true,
+          category_filter=["comment_success", "comment_danger"]) %} {% if
+          messages %} {% for category, message in messages %} {% set
+          bootstrap_class = 'success' if category == 'comment_success' else
+          'danger' %} {% if category == 'comment_success' %}
+          <div id="flash-success" style="display: none"></div>
           {% else %}
-          <div class="card bg-light border-0 mt-4 mb-5">
-            <div class="card-body text-center py-4">
-              <h5 class="card-title text-muted mb-3">Join the conversation</h5>
-              <p class="card-text mb-3">
-                Leave a comment and share your thoughts with the community.
-              </p>
-              <a
-                href="{{ url_for('login_get') }}"
-                class="btn btn-primary px-4 rounded-pill"
-                >Log In to Comment</a
-              >
-            </div>
+          <div
+            class="alert alert-{{ bootstrap_class }} alert-dismissible fade show shadow-sm"
+            role="alert"
+          >
+            {{ message }}
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="alert"
+            ></button>
           </div>
-          {% endif %} 
+          {% endif %} {% endfor %} {% endif %} {% endwith %}
+
+          <form
+            method="POST"
+            action="{{ url_for('show_post', post_id=post.id) }}"
+            novalidate
+          >
+            {{ form.hidden_tag() }}
+
+            <div
+              id="reply-badge"
+              class="alert alert-info py-2 px-3 justify-content-between align-items-center mb-2 shadow-sm"
+              style="display: none; border-radius: 8px"
+            >
+              <small
+                >Replying to <span id="reply-to-name" class="fw-bold">...</span>
+                <span id="reply-to-username" class="small opacity-75"
+                  >...</span
+                ></small
+              >
+              <button
+                type="button"
+                class="btn-close btn-close-white small"
+                onclick="cancelReply()"
+                aria-label="Close"
+              ></button>
+            </div>
+
+            <div class="mb-3">
+              {{ form.comment_text(class="form-control border-0 shadow-sm",
+              id="comment_text") }} {% if form.comment_text.errors %}
+              <div class="text-danger mt-1">
+                {% for error in form.comment_text.errors %}
+                <small>{{ error }}</small>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+              <button
+                type="button"
+                class="btn btn-outline-secondary rounded-pill px-3 fw-bold"
+                id="cancel-btn"
+                onclick="cancelReply()"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary rounded-pill px-4 shadow-sm fw-bold"
+                id="submit-btn"
+              >
+                Submit Comment
+              </button>
+            </div>
+          </form>
+        </div>
         {% else %}
+        <div class="card bg-light border-0 mt-4 mb-5 rounded-4">
+          <div class="card-body text-center py-5">
+            <h5 class="card-title text-muted mb-3">Join the conversation</h5>
+            <p class="card-text mb-3 text-muted">
+              Leave a comment and share your thoughts with the community.
+            </p>
+            <a
+              href="{{ url_for('login_get') }}"
+              class="btn btn-primary px-4 rounded-pill shadow-sm"
+              >Log In to Comment</a
+            >
+          </div>
+        </div>
+        {% endif %} {% else %}
         <div
           class="text-center py-5 text-muted fst-italic border-top border-bottom mb-4"
         >
-          <i class="bi bi-chat-slash fs-2 mb-2"></i><br />
+          <i class="bi bi-chat-slash fs-2 mb-2 d-block opacity-50"></i>
           Comments are turned off for this post.
         </div>
-        {% endif %} 
-        
-        {% macro render_comment(comment, depth) %}
-        <div id="comment-{{ comment.id }}" class="mb-3">
-            
-            <div class="d-flex">
-                <div class="flex-shrink-0">
-                    <img class="rounded-circle shadow-sm" src="{{ comment.comment_author.email | gravatar }}" alt="Avatar" width="40" height="40"/>
-                </div>
-                
-                <div class="ms-2 w-100">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        
-                        <div class="d-flex align-items-center">
-                            
-                            <div class="d-flex flex-column me-3">
-                                <span class="fw-bold text-dark" style="font-size: 0.9rem;">{{ comment.comment_author.name }}</span>
-                                <span class="text-muted" style="font-size: 0.75rem;">@{{ comment.comment_author.username }}</span>
-                            </div>
-
-                            {% if current_user.is_authenticated and (current_user.id == comment.comment_author.id or current_user.role == "admin") %}
-                            <form method="POST" action="{{ url_for('delete_comment', comment_id=comment.id) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this comment?');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-danger btn-sm py-0 px-2 shadow-none" style="font-size: 0.65rem; border-radius: 4px;">Delete</button>
-                            </form>
-                            {% endif %}
-                        </div>
-                        
-                        {% if post.can_comment and current_user.is_authenticated %}
-                        <button class="btn btn-link btn-sm text-decoration-none p-0" 
-                                onclick="setReply('{{ comment.id }}', '{{ comment.comment_author.name }}', '{{ comment.comment_author.username }}')">
-                            <i class="bi bi-reply-fill small"></i> <span class="small">Reply</span>
-                        </button>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="text-break small mb-2">
-                        {{ comment.text | safe }}
-                    </div>
-
-                    {% if comment.replies %}
-                        <div class="mt-1">
-                            <button class="btn btn-link btn-sm text-decoration-none p-0 text-muted fw-bold d-flex align-items-center" 
-                                    onclick="toggleReplies('{{ comment.id }}', {{ comment.replies|length }})" 
-                                    id="btn-replies-{{ comment.id }}"
-                                    style="font-size: 0.8rem;">
-                                <i class="bi bi-chevron-down me-1"></i>
-                                <span>Show {{ comment.replies|length }} Replies</span>
-                            </button>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% if comment.replies %}
-                <div id="replies-{{ comment.id }}" class="mt-2 ms-4 ps-2 border-start" style="display: none;">
-                    {% for reply in comment.replies %}
-                        {{ render_comment(reply, depth + 1) }}
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-        </div>
-        {% endmacro %}
+        {% endif %}
 
         <div class="mt-5 mb-4">
           <h3 class="border-bottom pb-2">
@@ -273,17 +548,111 @@
           </h3>
         </div>
 
-        <div class="comment-section">
-          {% for comment in post.comments %} {% if comment.parent_id == None %}
-          {{ render_comment(comment, 0) }} {% endif %} {% endfor %}
+        {# IMPORT MACRO #} {% from "macros.html" import render_comment %} {#
+        INFINITE SCROLL CONTAINER WITH FIXED HEIGHT #}
+        <div class="comments-scroll-window" id="scroll-wrapper">
+          <div class="comment-section" id="comments-container">
+            {% for comment in comments_pagination.items %} {{
+            render_comment(comment, 0, current_user, post) }} {% endfor %}
+          </div>
+
+          {# LOADING SPINNER (Inside the scroll window) #} {% if
+          comments_pagination.has_next %}
+          <div
+            id="loading-sentinel"
+            data-post-id="{{ post.id }}"
+            data-next-page="{{ comments_pagination.next_num }}"
+            class="text-center py-4"
+          >
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
 </article>
-{% endblock %} 
 
-{% block scripts %}
+<div class="modal fade" id="deletePostModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger">Delete Post?</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-muted">
+        Are you sure you want to delete this post? This action cannot be undone.
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button
+          type="button"
+          class="btn btn-light rounded-pill px-4"
+          data-bs-dismiss="modal"
+        >
+          Cancel
+        </button>
+        <form id="deletePostForm" method="POST" action="">
+          <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+          /><button type="submit" class="btn btn-danger rounded-pill px-4">
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div
+  class="modal fade"
+  id="deleteCommentModal"
+  tabindex="-1"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger">Delete Comment?</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-muted">
+        Are you sure you want to delete this comment?
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button
+          type="button"
+          class="btn btn-light rounded-pill px-4"
+          data-bs-dismiss="modal"
+        >
+          Cancel
+        </button>
+        <form id="deleteCommentForm" method="POST" action="">
+          <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+          /><button type="submit" class="btn btn-danger rounded-pill px-4">
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
 <script
   src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js"
   referrerpolicy="origin"
@@ -292,55 +661,28 @@
 <script>
   tinymce.init({
     selector: "#comment_text",
-    height: 300,
+    height: 150,
     menubar: false,
     statusbar: false,
-    plugins: [
-      "advlist",
-      "autolink",
-      "lists",
-      "link",
-      "image",
-      "charmap",
-      "preview",
-      "anchor",
-      "searchreplace",
-      "visualblocks",
-      "code",
-      "fullscreen",
-      "media",
-      "table",
-      "help",
-      "wordcount",
-      "emoticons",
-    ],
-    toolbar:
-      "bold italic | alignleft aligncenter alignright | " +
-      "bullist numlist | link image emoticons",
+    plugins: ["autolink", "lists", "link", "emoticons", "wordcount"],
+    toolbar: "bold italic | bullist numlist | link emoticons",
     content_style:
-      "body { font-family:Helvetica,Arial,sans-serif; font-size:14px }",
-    image_title: true,
-    automatic_uploads: true,
-    file_picker_types: "image",
+      "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; margin: 8px; }",
+    paste_as_text: true,
   });
 
+  // --- Reply Logic ---
   function setReply(commentId, authorName, authorUsername) {
     document.getElementById("parent_id").value = commentId;
-
     const badge = document.getElementById("reply-badge");
     document.getElementById("reply-to-name").innerText = authorName;
-    
-    document.getElementById("reply-to-username").innerText = '(@' + authorUsername + ')';
-
+    document.getElementById("reply-to-username").innerText =
+      "(@" + authorUsername + ")";
     badge.style.display = "flex";
-
-    document.getElementById("cancel-btn").style.display = "block"; 
-    document.getElementById("submit-btn").innerText = "Submit Reply"; 
-
+    document.getElementById("submit-btn").innerText = "Submit Reply";
     document
       .getElementById("comment-form-section")
-      .scrollIntoView({ behavior: "smooth" });
-
+      .scrollIntoView({ behavior: "auto", block: "center" });
     if (tinymce.get("comment_text")) {
       tinymce.get("comment_text").focus();
     }
@@ -349,87 +691,202 @@
   function cancelReply() {
     document.getElementById("parent_id").value = "";
     document.getElementById("reply-badge").style.display = "none";
-    
-    document.getElementById("cancel-btn").style.display = "none"; 
-    document.getElementById("submit-btn").innerText = "Submit Comment"; 
+    document.getElementById("submit-btn").innerText = "Submit Comment";
+    if (tinymce.get("comment_text")) {
+      tinymce.get("comment_text").setContent("");
+    }
   }
 
   function toggleReplies(commentId, count) {
-      const container = document.getElementById('replies-' + commentId);
-      const btn = document.getElementById('btn-replies-' + commentId);
-      const icon = btn.querySelector('i');
-      const textSpan = btn.querySelector('span');
+    const container = document.getElementById("replies-" + commentId);
+    const btn = document.getElementById("btn-replies-" + commentId);
+    const icon = btn.querySelector("i");
+    const textSpan = btn.querySelector("span");
 
-      if (container.style.display === 'none') {
-          container.style.display = 'block';
-          textSpan.innerText = 'Hide Replies';
-          icon.className = 'bi bi-chevron-up me-1';
-      } else {
-          container.style.display = 'none';
-          textSpan.innerText = 'Show ' + count + ' Replies';
-          icon.className = 'bi bi-chevron-down me-1';
-      }
+    if (container.style.display === "none") {
+      container.style.display = "block";
+      textSpan.innerText = "Hide Replies";
+      icon.className = "bi bi-chevron-up me-1";
+    } else {
+      container.style.display = "none";
+      textSpan.innerText = "Show " + count + " Replies";
+      icon.className = "bi bi-chevron-down me-1";
+    }
   }
 
   // --- Dynamic Scroll Detection & Animation ---
-  document.addEventListener("DOMContentLoaded", function() {
-      // 1. Check if the 'flash-success' alert exists (signals a fresh submit)
-      const successMessage = document.getElementById('flash-success');
+  document.addEventListener("DOMContentLoaded", function () {
+    // 1. Modals Logic
+    const deleteModal = document.getElementById("deletePostModal");
+    if (deleteModal) {
+      deleteModal.addEventListener("show.bs.modal", function (event) {
+        const button = event.relatedTarget;
+        const deleteUrl = button.getAttribute("data-delete-url");
+        const form = deleteModal.querySelector("#deletePostForm");
+        form.action = deleteUrl;
+      });
+    }
 
-      // 2. Only run scroll logic if we have the success flag AND a hash anchor
-      if (successMessage && window.location.hash) {
-          const targetId = window.location.hash.substring(1); 
-          const targetElement = document.getElementById(targetId);
+    const deleteCommentModal = document.getElementById("deleteCommentModal");
+    if (deleteCommentModal) {
+      deleteCommentModal.addEventListener("show.bs.modal", function (event) {
+        const button = event.relatedTarget;
+        const deleteUrl = button.getAttribute("data-delete-url");
+        const form = deleteCommentModal.querySelector("#deleteCommentForm");
+        form.action = deleteUrl;
+      });
+    }
 
-          if (targetElement) {
-              let currentElement = targetElement;
-              
-              // Walk up the DOM to open all parent folders
-              while (currentElement) {
-                  const parentContainer = currentElement.closest('div[id^="replies-"]');
-                  
-                  if (!parentContainer) {
-                      break;
-                  }
+    // 2. SMART PRIORITY SCROLL LOGIC
+    const validationError = document.querySelector(
+      "#comment-form-section .text-danger",
+    );
+    const commentSectionAlert = document.querySelector(
+      "#comment-form-section .alert",
+    );
+    const generalAlert = document.querySelector(
+      ".container > .row > .col-md-10 > .alert",
+    );
+    // Check if the 'flash-success' alert exists (signals a fresh submit)
+    const successMessage = document.getElementById("flash-success");
 
-                  if (parentContainer.style.display === 'none') {
-                      parentContainer.style.display = 'block';
-                      
-                      const parentCommentId = parentContainer.id.replace('replies-', '');
-                      const btn = document.getElementById('btn-replies-' + parentCommentId);
-                      
-                      if (btn) {
-                          const icon = btn.querySelector('i');
-                          const textSpan = btn.querySelector('span');
-                          textSpan.innerText = 'Hide Replies';
-                          icon.className = 'bi bi-chevron-up me-1';
-                      }
-                  }
-                  currentElement = parentContainer.parentElement;
-              }
-              
-              // 3. Initiate Scroll
-              targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // PRIORITY 1: Validation Errors (Always fix input first)
+    if (validationError) {
+      const scrollTarget =
+        validationError.closest("form") ||
+        validationError.closest(".card-body") ||
+        validationError;
+      setTimeout(() => {
+        scrollTarget.scrollIntoView({ behavior: "auto", block: "center" });
+        if (tinymce.get("comment_text")) tinymce.get("comment_text").focus();
+      }, 100);
+    }
 
-              // 4. Dynamic Wait: Check scroll position every 50ms
-              let lastPos = window.scrollY;
-              let checkCount = 0; // Safety valve to prevent infinite loop
+    // PRIORITY 2: Hash Scroll (Deep Links, New Comments, Replies)
+    // NOTE: Runs BEFORE Alerts to ensure new content is seen.
+    else if (window.location.hash) {
+      const targetId = window.location.hash.substring(1);
+      const targetElement = document.getElementById(targetId);
 
-              const checkIfScrollDone = setInterval(() => {
-                  const currentPos = window.scrollY;
-                  checkCount++;
-                  
-                  // If position hasn't changed since last check (and we've waited at least 100ms)
-                  // OR if we've waited too long (e.g., 3 seconds max safety)
-                  if ((lastPos === currentPos && checkCount > 2) || checkCount > 60) {
-                      clearInterval(checkIfScrollDone);
-                      targetElement.classList.add('highlight-anim');
-                  }
-                  
-                  lastPos = currentPos;
-              }, 50); 
+      if (targetElement) {
+        // A. Handle Nested Replies (Open parent folders if hidden)
+        let currentElement = targetElement;
+        while (currentElement) {
+          const parentContainer = currentElement.closest('div[id^="replies-"]');
+          if (!parentContainer) break;
+
+          if (parentContainer.style.display === "none") {
+            parentContainer.style.display = "block";
+            const parentCommentId = parentContainer.id.replace("replies-", "");
+            const btn = document.getElementById(
+              "btn-replies-" + parentCommentId,
+            );
+            if (btn) {
+              const icon = btn.querySelector("i");
+              const textSpan = btn.querySelector("span");
+              textSpan.innerText = "Hide Replies";
+              icon.className = "bi bi-chevron-up me-1";
+            }
           }
+          currentElement = parentContainer.parentElement;
+        }
+
+        // B. Scroll Instantly (Simplified Logic)
+        setTimeout(() => {
+          targetElement.scrollIntoView({ behavior: "auto", block: "center" });
+          
+          // Trigger Highlight Animation immediately
+          targetElement.classList.add("highlight-anim");
+
+          // Clean URL (Silent)
+          setTimeout(() => {
+            history.replaceState(null, null, window.location.pathname);
+          }, 2500);
+        }, 50);
       }
+    }
+
+    // PRIORITY 3: Alerts (Only scroll here if no specific Hash target was found)
+    else if (commentSectionAlert) {
+      setTimeout(() => {
+        commentSectionAlert.scrollIntoView({
+          behavior: "auto",
+          block: "center",
+        });
+      }, 100);
+    } else if (generalAlert) {
+      setTimeout(() => {
+        generalAlert.scrollIntoView({ behavior: "auto", block: "center" });
+      }, 100);
+    }
+
+    // 3. INFINITE SCROLL LOGIC
+    const sentinel = document.getElementById("loading-sentinel");
+    const container = document.getElementById("comments-container");
+    let isLoading = false; // FIX: Prevent double-fetching
+
+    if (sentinel) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && !isLoading) {
+            const postId = sentinel.getAttribute("data-post-id");
+            const nextPage = sentinel.getAttribute("data-next-page");
+
+            if (!nextPage || nextPage === "None") return;
+            isLoading = true; // Lock
+
+            fetch(`/post/${postId}/load-comments?page=${nextPage}`)
+              .then((response) => response.text())
+              .then((html) => {
+                if (html.trim().length > 0) {
+                  container.insertAdjacentHTML("beforeend", html);
+
+                  // --- FIX: Run Time Conversion on New Elements ---
+                  if (window.localizeTimes) {
+                    window.localizeTimes(container);
+                  }
+
+                  const nextNum = parseInt(nextPage) + 1;
+                  sentinel.setAttribute("data-next-page", nextNum);
+                } else {
+                  sentinel.style.display = "none";
+                }
+                isLoading = false; // Unlock
+              })
+              .catch((err) => {
+                console.error("Error loading comments:", err);
+                sentinel.style.display = "none";
+                isLoading = false; // Unlock
+              });
+          }
+        },
+        { rootMargin: "200px" }, // Load early
+      );
+
+      observer.observe(sentinel);
+    }
+
+    // --- PERFORMANCE: LAZY LOAD + SKELETON SHIMMER ---
+    const articleImages = document.querySelectorAll(".article-content img");
+
+    articleImages.forEach((img) => {
+      // 1. Force Lazy Load
+      img.setAttribute("loading", "lazy");
+
+      // 2. Add Shimmer Class (Shows the shining gray box)
+      img.classList.add("img-loading");
+
+      // 3. Define what happens when loaded
+      img.onload = function () {
+        // Remove the shimmer so the real image shows clearly
+        img.classList.remove("img-loading");
+      };
+
+      // 4. Check if already cached (Instant load)
+      if (img.complete) {
+        img.classList.remove("img-loading");
+      }
+    });
   });
 </script>
 {% endblock %}

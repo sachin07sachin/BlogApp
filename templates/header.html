@@ -1,123 +1,257 @@
-<nav class="navbar navbar-expand-lg navbar-light" id="mainNav">
-  <div class="container px-4 px-lg-5">
-    <a class="navbar-brand" href="{{ url_for('get_all_posts') }}">Start Blog</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
-      Menu <i class="bi bi-list"></i>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarResponsive">
+<style>
+    /* 1. Wrapper: Controls width and positioning */
+    .search-form-wrapper {
+      transition: all 0.3s ease;
+    }
+  
+    /* Desktop: Make it wide enough (350px+) so placeholder text is visible */
+    @media (min-width: 992px) {
+      .search-form-wrapper {
+        min-width: 400px; 
+      }
+    }
+  
+    /* Mobile: Full width and spacing */
+    @media (max-width: 991px) {
+      .search-form-wrapper {
+        width: 100%;
+        margin-top: 15px !important;
+      }
+    }
+  
+    /* 2. The Input Group: Pill shape + Shadow */
+    .modern-search-group {
+      /* REMOVED overflow: hidden so the dropdown can appear */
+      border-radius: 50px; 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08); /* Modern soft shadow */
+      border: 1px solid #e3e6f0;
+      background-color: #fff;
+      display: flex;
+      align-items: stretch;
+    }
+  
+    /* 3. The Filter Button (Left) */
+    .modern-filter-btn {
+      border: none !important;
+      background-color: #f8f9fa;
+      color: #6c757d;
+      padding: 0 15px;
+      border-right: 1px solid #eaecf4 !important;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
       
-      <ul class="navbar-nav ms-auto py-4 py-lg-0 align-items-center">
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
-        {% if not current_user.is_authenticated %}
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a></li>
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Support</a></li>
-        {% else %}
-        <li class="nav-item">
-          <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('user_profile', username=current_user.username) }}">
-              Profile
-          </a>
-      </li>
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
-        <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
-        {% endif %}
-
-      {% if request.endpoint in ['get_all_posts', 'get_user_posts', 'search'] %}
+      /* FIX: Manually round the left corners since we removed overflow:hidden */
+      border-top-left-radius: 50px;
+      border-bottom-left-radius: 50px;
+    }
+    .modern-filter-btn:hover, .modern-filter-btn.show {
+      background-color: #eaecf4;
+      color: #4e73df;
+    }
+  
+    /* 4. The Input Field (Center) - UPDATED HEIGHT */
+    .modern-search-input {
+      border: none !important;
+      box-shadow: none !important;
+      /* CHANGED: Reduced padding from 12px to 8px to decrease height */
+      padding: 8px 20px; 
+      /* CHANGED: Slightly smaller font (0.95rem) to match new height */
+      font-size: 0.95rem; 
+      color: #495057;
+      width: 100%;
+    }
+    .modern-search-input::placeholder {
+      color: #a0aec0;
+      font-weight: 400;
+    }
+  
+    /* 5. The Search Button (Right) */
+    .modern-search-btn {
+      border: none !important;
+      background-color: #2179fc; /* Bootstrap Primary */
+      color: white;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
       
-        <form class="d-flex ms-lg-3 my-2 my-lg-0" action="{{ url_for('search') }}" method="GET">
+      /* FIX: Manually round the right corners */
+      border-top-right-radius: 50px;
+      border-bottom-right-radius: 50px;
+    }
+    .modern-search-btn:hover {
+      background-color: #0b5ed7;
+    }
+    
+    /* Active Filter Indicator */
+    .active-filter {
+      color: #ffc107 !important; /* Yellow icon when filters are active */
+    }
+  </style>
+  
+  <nav class="navbar navbar-expand-lg navbar-light" id="mainNav">
+    <div class="container px-4 px-lg-5">
+      <a class="navbar-brand" href="{{ url_for('get_all_posts') }}">Blog App</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+        Menu <i class="bi bi-list"></i>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarResponsive">
+        
+        <ul class="navbar-nav ms-auto py-4 py-lg-0 align-items-center">
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
           
-          {% if request.endpoint == 'get_user_posts' or request.args.get('scope') == 'me' %}
-              <input type="hidden" name="scope" value="me">
+          {% if not current_user.is_authenticated %}
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Support</a></li>
+          {% else %}
+          <li class="nav-item">
+            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('user_profile', username=current_user.username) }}">
+                Profile
+            </a>
+          </li>
+          <li class="nav-item position-relative">
+              <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('inbox') }}">
+                  Messages
+                  {% if unread_count > 0 %}
+                      <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="top: 25px !important; font-size: 0.6rem;">
+                          {{ unread_count }}
+                          <span class="visually-hidden">unread messages</span>
+                      </span>
+                  {% endif %}
+              </a>
+          </li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
           {% endif %}
-
-          <div class="input-group input-group-sm">
+        </ul>
+  
+        {% if request.endpoint in ['get_all_posts', 'user_profile', 'search'] %}
+        
+          <form class="d-flex ms-lg-3 my-2 my-lg-0 search-form-wrapper" action="{{ url_for('search') }}" method="GET">
             
-            {% set filters_active = request.args.get('year') or request.args.get('month') or request.args.get('day') or request.args.get('sort') == 'oldest' %}
-            <button 
-                class="btn {% if filters_active %}btn-warning{% else %}btn-light search-input{% endif %} dropdown-toggle" 
-                type="button" 
-                data-bs-toggle="dropdown" 
-                aria-expanded="false"
-                style="border-right: 1px solid rgba(0,0,0,0.1);"
-            >
-                <i class="bi bi-funnel-fill"></i>
-            </button>
-
-            <ul class="dropdown-menu p-3 shadow" style="min-width: 300px;" onclick="event.stopPropagation()">
+            {# --- LOGIC FIX: DETERMINE SEARCH SCOPE --- #}
+            {% set current_scope = request.args.get('scope') %}
+            {% set target_scope = '' %}
+            {% set placeholder_text = 'Search posts...' %}
+  
+            {# Scenario A: User is viewing a Profile Page #}
+            {% if request.endpoint == 'user_profile' and user %}
                 
-                <li>
-                    <h6 class="dropdown-header px-0 text-uppercase small fw-bold">Sort Order</h6>
-                    <div class="btn-group w-100" role="group">
-                        <input type="radio" class="btn-check" name="sort" value="newest" id="sortNew" 
-                               {% if request.args.get('sort', 'newest') == 'newest' %}checked{% endif %}>
-                        <label class="btn btn-outline-secondary btn-sm" for="sortNew">Newest</label>
-
-                        <input type="radio" class="btn-check" name="sort" value="oldest" id="sortOld" 
-                               {% if request.args.get('sort') == 'oldest' %}checked{% endif %}>
-                        <label class="btn btn-outline-secondary btn-sm" for="sortOld">Oldest</label>
-                    </div>
-                </li>
-
-                <li><hr class="dropdown-divider my-3"></li>
-
-                <li>
-                    <label class="form-label small fw-bold text-muted mb-2">Filter by Date:</label>
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <input type="number" name="year" class="form-control form-control-sm" placeholder="Year" min="2000" max="2100"
-                                   value="{{ request.args.get('year', '') }}">
-                        </div>
-                        <div class="col-4">
-                            <select name="month" class="form-select form-select-sm">
-                                <option value="">Month</option>
-                                <option value="1" {% if request.args.get('month')=='1' %}selected{% endif %}>Jan</option>
-                                <option value="2" {% if request.args.get('month')=='2' %}selected{% endif %}>Feb</option>
-                                <option value="3" {% if request.args.get('month')=='3' %}selected{% endif %}>Mar</option>
-                                <option value="4" {% if request.args.get('month')=='4' %}selected{% endif %}>Apr</option>
-                                <option value="5" {% if request.args.get('month')=='5' %}selected{% endif %}>May</option>
-                                <option value="6" {% if request.args.get('month')=='6' %}selected{% endif %}>Jun</option>
-                                <option value="7" {% if request.args.get('month')=='7' %}selected{% endif %}>Jul</option>
-                                <option value="8" {% if request.args.get('month')=='8' %}selected{% endif %}>Aug</option>
-                                <option value="9" {% if request.args.get('month')=='9' %}selected{% endif %}>Sep</option>
-                                <option value="10" {% if request.args.get('month')=='10' %}selected{% endif %}>Oct</option>
-                                <option value="11" {% if request.args.get('month')=='11' %}selected{% endif %}>Nov</option>
-                                <option value="12" {% if request.args.get('month')=='12' %}selected{% endif %}>Dec</option>
-                            </select>
-                        </div>
-                        <div class="col-4">
-                            <input type="number" name="day" class="form-control form-control-sm" placeholder="Day" min="1" max="31"
-                                   value="{{ request.args.get('day', '') }}">
-                        </div>
-                    </div>
-                    <div class="form-text x-small mt-2">
-                        Fill any combination (e.g. Year only, or Year + Month, Year + Month + Day).
-                    </div>
-                </li>
-
-                <li><hr class="dropdown-divider my-3"></li>
-
-                <li>
-                    <button type="submit" class="btn btn-primary btn-sm w-100 mb-2">Apply Filters</button>
-                    <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
-                </li>
-            </ul>
-
-            <input 
-                class="form-control search-input" 
-                type="search" 
-                name="q" 
-                placeholder="Search{% if request.args.get('scope') == 'me' or request.endpoint == 'get_user_posts' %} my posts...{% else %}...{% endif %}" 
-                aria-label="Search"
-                value="{{ request.args.get('q', '') }}" 
-            >
-            <button class="btn btn-primary" type="submit">
-                <i class="bi bi-search"></i>
-            </button>
-          </div>
-        </form>
-
-      {% endif %}
-
+                {# FIX: Check if the profile belongs to the logged-in user #}
+                {% if current_user.is_authenticated and user.id == current_user.id %}
+                     {% set target_scope = 'me' %}
+                     {% set placeholder_text = 'Search my posts...' %}
+                {% else %}
+                     {% set target_scope = user.username %}
+                     {% set placeholder_text = 'Search @' + user.username + "'s posts..." %}
+                {% endif %}
+            
+            {# Scenario B: User is on the Search Page (Results) and has an active scope #}
+            {% elif current_scope %}
+                {% set target_scope = current_scope %}
+                {% if current_scope == 'me' %}
+                    {% set placeholder_text = 'Search my posts...' %}
+                {% else %}
+                    {# Handle visual for specific user scope #}
+                    {% set placeholder_text = 'Search @' + current_scope + "'s posts..." %}
+                {% endif %}
+            {% endif %}
+  
+            {# Output the Hidden Input #}
+            {% if target_scope %}
+                <input type="hidden" name="scope" value="{{ target_scope }}">
+            {% endif %}
+  
+            <div class="input-group modern-search-group">
+              
+              {% set filters_active = request.args.get('year') or request.args.get('month') or request.args.get('day') or request.args.get('sort') == 'oldest' %}
+              
+              <button 
+                  class="dropdown-toggle modern-filter-btn {% if filters_active %}active-filter{% endif %}" 
+                  type="button" 
+                  data-bs-toggle="dropdown" 
+                  aria-expanded="false"
+                  title="Advanced Filters"
+              >
+                  <i class="bi bi-funnel-fill"></i>
+              </button>
+  
+              <ul class="dropdown-menu p-3 shadow border-0" style="min-width: 300px; border-radius: 15px;" onclick="event.stopPropagation()">
+                  <li>
+                      <h6 class="dropdown-header px-0 text-uppercase small fw-bold">Sort Order</h6>
+                      <div class="btn-group w-100" role="group">
+                          <input type="radio" class="btn-check" name="sort" value="newest" id="sortNew" 
+                                 {% if request.args.get('sort', 'newest') == 'newest' %}checked{% endif %}>
+                          <label class="btn btn-outline-secondary btn-sm" for="sortNew">Newest</label>
+  
+                          <input type="radio" class="btn-check" name="sort" value="oldest" id="sortOld" 
+                                 {% if request.args.get('sort') == 'oldest' %}checked{% endif %}>
+                          <label class="btn btn-outline-secondary btn-sm" for="sortOld">Oldest</label>
+                      </div>
+                  </li>
+                  <li><hr class="dropdown-divider my-3"></li>
+                  <li>
+                      <label class="form-label small fw-bold text-muted mb-2">Filter by Date:</label>
+                      <div class="row g-2">
+                          <div class="col-4">
+                              <input type="number" name="year" class="form-control form-control-sm" placeholder="Year" min="2000" max="2100"
+                                     value="{{ request.args.get('year', '') }}">
+                          </div>
+                          <div class="col-4">
+                              <select name="month" class="form-select form-select-sm">
+                                  <option value="">Month</option>
+                                  <option value="1" {% if request.args.get('month')=='1' %}selected{% endif %}>Jan</option>
+                                  <option value="2" {% if request.args.get('month')=='2' %}selected{% endif %}>Feb</option>
+                                  <option value="3" {% if request.args.get('month')=='3' %}selected{% endif %}>Mar</option>
+                                  <option value="4" {% if request.args.get('month')=='4' %}selected{% endif %}>Apr</option>
+                                  <option value="5" {% if request.args.get('month')=='5' %}selected{% endif %}>May</option>
+                                  <option value="6" {% if request.args.get('month')=='6' %}selected{% endif %}>Jun</option>
+                                  <option value="7" {% if request.args.get('month')=='7' %}selected{% endif %}>Jul</option>
+                                  <option value="8" {% if request.args.get('month')=='8' %}selected{% endif %}>Aug</option>
+                                  <option value="9" {% if request.args.get('month')=='9' %}selected{% endif %}>Sep</option>
+                                  <option value="10" {% if request.args.get('month')=='10' %}selected{% endif %}>Oct</option>
+                                  <option value="11" {% if request.args.get('month')=='11' %}selected{% endif %}>Nov</option>
+                                  <option value="12" {% if request.args.get('month')=='12' %}selected{% endif %}>Dec</option>
+                              </select>
+                          </div>
+                          <div class="col-4">
+                              <input type="number" name="day" class="form-control form-control-sm" placeholder="Day" min="1" max="31"
+                                     value="{{ request.args.get('day', '') }}">
+                          </div>
+                      </div>
+                      <div class="form-text x-small mt-2">Fill any combination.</div>
+                  </li>
+                  <li><hr class="dropdown-divider my-3"></li>
+                  <li>
+                      <button type="submit" class="btn btn-primary btn-sm w-100 mb-2">Apply Filters</button>
+                      
+                      {# --- LOGIC FIX: CLEAR ALL BUTTON --- #}
+                      {% if user %}
+                          <a href="{{ url_for('user_profile', username=user.username) }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
+                      {% else %}
+                          <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
+                      {% endif %}
+                  </li>
+              </ul>
+  
+              <input 
+                  class="form-control modern-search-input" 
+                  type="search" 
+                  name="q" 
+                  placeholder="{{ placeholder_text }}" 
+                  aria-label="Search"
+                  value="{{ request.args.get('q', '') }}" 
+              >
+              <button class="modern-search-btn" type="submit">
+                  <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </form>
+  
+        {% endif %}
+  
+      </div>
     </div>
-  </div>
-</nav>
+  </nav>

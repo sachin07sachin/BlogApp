@@ -1,24 +1,59 @@
-<footer class="border-top py-3 mt-auto">
+<footer class="border-top py-3 mt-auto bg-white">
   <div class="container px-4 px-lg-5">
     
-    <div class="d-flex flex-column flex-md-row justify-content-end align-items-center">
+    <div class="row align-items-center justify-content-between flex-column flex-md-row gap-3">
       
-      <div class="small text-muted fst-italic mb-3 mb-md-0">
-        Copyright &copy; Blog Website <script>document.write(new Date().getFullYear())</script>
+      <div class="col-auto">
+        <div class="small text-muted mb-0">
+          Copyright &copy; Blog App {{ current_year }}
+        </div>
       </div>
 
-      <!-- <div class="social-icons">
-        <a href="#!" class="text-muted me-3">
-          <i class="fab fa-twitter fa-lg"></i>
-        </a>
-        <a href="#!" class="text-muted me-3">
-          <i class="fab fa-facebook-f fa-lg"></i>
-        </a>
-        <a href="#!" class="text-muted">
-          <i class="fab fa-github fa-lg"></i>
-        </a>
-      </div> -->
-
+      <div class="col-auto">
+        <div class="small d-flex gap-3 justify-content-center">
+          <a href="{{ url_for('legal', page_name='privacy') }}" class="text-decoration-none text-muted link-primary transition">Privacy</a>
+          <span class="text-muted opacity-25">|</span>
+          <a href="{{ url_for('legal', page_name='terms') }}" class="text-decoration-none text-muted link-primary transition">Terms</a>
+          <span class="text-muted opacity-25">|</span>
+          <a href="{{ url_for('legal', page_name='guidelines') }}" class="text-decoration-none text-muted link-primary transition">Guidelines</a>
+        </div>
       </div>
+
+      <div class="col-auto">
+        <div class="d-flex align-items-center gap-3">
+          
+         {# <a href="#!" class="text-muted link-dark transition" title="Twitter">
+            <i class="fab fa-twitter"></i>
+          </a>
+          <a href="#!" class="text-muted link-dark transition" title="GitHub">
+            <i class="fab fa-github"></i>
+          </a>#}
+
+          {#<div class="vr opacity-25" style="height: 1.5em;"></div>#}
+
+          <a href="{{ url_for('contact') }}" class="text-muted link-primary transition d-flex align-items-center gap-1" title="Contact Support">
+            <i class="bi bi-question-circle-fill"></i>
+            <span class="small fw-bold">Help</span>
+          </a>
+
+        </div>
+      </div>
+
+    </div>
   </div>
 </footer>
+
+<style>
+  footer .transition {
+    transition: color 0.2s ease-in-out;
+  }
+  footer a:hover {
+    text-decoration: none;
+  }
+  /* On mobile, add some spacing between the stacked rows */
+  @media (max-width: 768px) {
+    footer .row {
+      text-align: center;
+    }
+  }
+</style>

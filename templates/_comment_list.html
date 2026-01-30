@@ -1,0 +1,6 @@
+{# Import the macro so this file knows how to use it #}
+{% from "macros.html" import render_comment %}
+
+{% for comment in comments %}
+    {{ render_comment(comment, 0, current_user, post) }}
+{% endfor %}

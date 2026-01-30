@@ -10954,3 +10954,29 @@ header.masthead .post-heading .meta a {
 span.cke_notification_message {
     display: none !important;
 }
+
+/* ================================================================= */
+
+/* =========================================
+   UNIVERSAL BROWSER OVERRIDES (Autofill Fix)
+   ========================================= */
+
+/* 1. Stop Chrome/Edge from forcing a blue/yellow background on Autofill */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill {
+  /* This hack paints a massive inner shadow over the browser's blue color */
+  /* We use white (or transparent-ish) to match your design */
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  
+  /* This ensures the text color remains what you want, not Chrome's default black */
+  -webkit-text-fill-color: inherit !important;
+  
+  /* This helps with the transition flicker */
+  transition: background-color 5000s ease-in-out 0s;
+}
+

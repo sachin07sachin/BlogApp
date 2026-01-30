@@ -1,7 +1,60 @@
-{% extends "base.html" %} 
+{% extends "base.html" %} {% block header %}
+<style>
+  /* Fix for the border disappearing on focus */
+  .input-group .form-control:focus {
+    z-index: 3; /* Places focused input ring above others */
+  }
 
-{% block header %}
-<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/register-bg.jpg') }}')">
+  .input-group .btn-outline-secondary {
+    border-color: #ced4da; /* Force consistent border color with input */
+    z-index: 2;
+  }
+
+  /* FIXED: Added high z-index and forced border visibility for the eye button */
+  .input-group:focus-within .btn-outline-secondary {
+    border-color: #80c2d0; /* Matches your theme focus color */
+    z-index: 5 !important; /* Forces the button borders to stay above the input glow */
+  }
+
+  /* 2. Making footer links stand out (Modern Typography) */
+  .auth-link {
+    color: #0085a1; /* Your theme teal */
+    font-weight: 600;
+    transition: all 0.2s ease;
+    text-decoration: none;
+  }
+
+  .auth-link:hover {
+    color: #005f73; /* Darker teal on hover */
+    text-decoration: underline !important;
+  }
+
+  /* --- PASSWORD FEEDBACK STYLING --- */
+  #pwd-criteria {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+  }
+
+  /* Valid State (Green) */
+  .rule-valid {
+    color: #198754 !important; /* Bootstrap Success Green */
+    font-weight: 600;
+    transition: color 0.2s ease;
+  }
+
+  /* Invalid/Pending State (Gray) */
+  .rule-invalid {
+    color: #6c757d !important; /* Bootstrap Muted */
+  }
+</style>
+
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/register-bg.jpg') }}')"
+>
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -13,117 +66,294 @@
     </div>
   </div>
 </header>
-{% endblock %} 
-
-{% block content %}
+{% endblock %} {% block content %}
 <main class="mb-4">
   <div class="container">
     <div class="row justify-content-center">
       <div class="col-lg-8 col-md-10">
-        {% with messages = get_flashed_messages(with_categories=true) %} 
-          {% if messages %} 
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endfor %} 
-          {% endif %} 
-        {% endwith %}
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if
+        messages %} {% for category, message in messages %}
+        <div
+          class="alert alert-{{ category }} alert-dismissible fade show"
+          role="alert"
+        >
+          {{ message }}
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="alert"
+          ></button>
+        </div>
+        {% endfor %} {% endif %} {% endwith %}
       </div>
 
-      <div class="col-lg-8 col-md-10 mx-auto">
-        <form method="POST" action="{{ url_for('register') }}" novalidate>
-          {{ form.hidden_tag() }}
+      <div class="col-lg-6 col-md-8 mx-auto">
+        <div class="card border-0 shadow rounded-3 my-3">
+          <div class="card-body p-4 p-sm-5">
+            <h3 class="card-title text-center mb-4 fw-light fs-4">
+              Create Account
+            </h3>
 
-          <div class="mb-3">
-            {{ form.name.label(class="form-label") }} 
-            {{ form.name(class="form-control", placeholder="Enter your name") }} 
-            {% if form.name.errors %}
-            <div class="text-danger">
-              {% for error in form.name.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </div>
+            <form method="POST" action="{{ url_for('register') }}" novalidate>
+              {{ form.hidden_tag() }}
 
-          <div class="mb-3">
-            {{ form.username.label(class="form-label") }} 
-            {{ form.username(class="form-control", placeholder="Choose a unique username") }} 
-            {% if form.username.errors %}
-            <div class="text-danger">
-              {% for error in form.username.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </div>
+              <div class="form-floating mb-3">
+                {{ form.name(class="form-control", placeholder="Enter your
+                name") }} {{ form.name.label() }} {% if form.name.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in form.name.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
 
-          <div class="mb-3">
-            {{ form.email.label(class="form-label") }} 
-            {{ form.email(class="form-control", placeholder="Enter your email") }}
-            {% if form.email.errors %}
-            <div class="text-danger">
-              {% for error in form.email.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </div>
+              <div class="form-floating mb-3">
+                {{ form.username(class="form-control", placeholder="Choose a
+                unique username") }} {{ form.username.label() }} {% if
+                form.username.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in form.username.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
 
-          <div class="mb-3">
-            {{ form.password.label(class="form-label") }}
-            <div class="input-group">
-                {{ form.password(class="form-control", id="reg-password", placeholder="Create a password") }}
-                <button class="btn btn-outline-secondary" type="button" id="btn-toggle-reg">
+              <div class="form-floating mb-3">
+                {{ form.email(class="form-control", placeholder="Enter your
+                email") }} {{ form.email.label() }} {% if form.email.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in form.email.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <div class="input-group">
+                  <div class="form-floating flex-grow-1">
+                    {{ form.password(class="form-control rounded-end-0",
+                    id="reg-password", placeholder="Create a password") }} {{
+                    form.password.label() }}
+                  </div>
+                  <button
+                    class="btn btn-outline-secondary px-3"
+                    type="button"
+                    id="btn-toggle-reg"
+                  >
                     <i class="bi bi-eye" id="icon-reg"></i>
+                  </button>
+                </div>    
+
+                {% if form.password.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in form.password.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                <div id="pwd-criteria" class="mt-2 d-none">
+                  <small class="text-muted fw-bold"
+                    >Password must contain:</small
+                  >
+                  <ul class="list-unstyled mb-0 small mt-1">
+                    <li id="rule-len" class="text-muted">
+                      <i class="bi bi-circle me-1"></i> 8-128 characters
+                    </li>
+                    <li id="rule-upper" class="text-muted">
+                      <i class="bi bi-circle me-1"></i>At least one uppercase letter (A-Z)
+                    </li>
+                    <li id="rule-lower" class="text-muted">
+                      <i class="bi bi-circle me-1"></i>At least one lowercase letter (a-z)
+                    </li>
+                    <li id="rule-num" class="text-muted">
+                      <i class="bi bi-circle me-1"></i>At least one Number (0-9)
+                    </li>
+                    <li id="rule-spec" class="text-muted">
+                      <i class="bi bi-circle me-1"></i>At least one special character or symbol
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              
+
+              <div class="form-check mb-3 mt-4">
+                {{ form.agree_terms(class="form-check-input", id="agree_terms")
+                }}
+                <label
+                  class="form-check-label text-muted small"
+                  for="agree_terms"
+                >
+                  I agree to the
+                  <a
+                    href="{{ url_for('legal', page_name='terms') }}"
+                    class="text-decoration-underline text-primary"
+                    >Terms of Service</a
+                  >,
+                  <a
+                    href="{{ url_for('legal', page_name='privacy') }}"
+                    class="text-decoration-underline text-primary"
+                    >Privacy Policy</a
+                  >, and
+                  <a
+                    href="{{ url_for('legal', page_name='guidelines') }}"
+                    class="text-decoration-underline text-primary"
+                    >Community Guidelines</a
+                  >.
+                </label>
+
+                {% if form.agree_terms.errors %}
+                <div class="text-danger mt-1">
+                  {% for error in form.agree_terms.errors %}
+                  <small
+                    ><i class="bi bi-exclamation-circle"></i> {{ error }}</small
+                  >
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="d-grid mt-4">
+                <button
+                  type="submit"
+                  id="submit_btn"
+                  class="btn btn-primary btn-lg text-uppercase fw-bold"
+                  style="letter-spacing: 1px"
+                >
+                  Register
                 </button>
-            </div>
-            {% if form.password.errors %}
-            <div class="text-danger">
-              {% for error in form.password.errors %}
-              <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-            {% endif %}
+              </div>
+            </form>
           </div>
 
-          <button type="submit" class="btn btn-primary">Register</button>
-        </form>
+          <div class="card-footer text-center py-4 border-0 bg-transparent">
+            <p class="small text-muted mb-0">
+              Already have an account?
+              <a
+                href="{{ url_for('login_get') }}"
+                class="auth-link fw-bold link-primary"
+                >Log In</a
+              >
+            </p>
+          </div>
+        </div>
       </div>
-
-      <div class="mt-4 text-center">
-        <p class="small text-muted mb-1">
-          Already have an account?
-          <a href="{{ url_for('login_get') }}" class="text-decoration-none fw-bold">Log In</a>
-        </p>
-      </div>
-      
     </div>
   </div>
 </main>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-    const regToggle = document.getElementById('btn-toggle-reg');
-    const regField = document.getElementById('reg-password');
-    const regIcon = document.getElementById('icon-reg');
+  // 1. Password Visibility Toggle
+  const regToggle = document.getElementById("btn-toggle-reg");
+  const regField = document.getElementById("reg-password");
+  const regIcon = document.getElementById("icon-reg");
 
-    if (regToggle) {
-        regToggle.addEventListener('click', function() {
-            const type = regField.getAttribute('type') === 'password' ? 'text' : 'password';
-            regField.setAttribute('type', type);
-            
-            if (type === 'text') {
-                regIcon.classList.remove('bi-eye');
-                regIcon.classList.add('bi-eye-slash');
-            } else {
-                regIcon.classList.remove('bi-eye-slash');
-                regIcon.classList.add('bi-eye');
-            }
-        });
+  if (regToggle) {
+    regToggle.addEventListener("click", function () {
+      const type =
+        regField.getAttribute("type") === "password" ? "text" : "password";
+      regField.setAttribute("type", type);
+
+      if (type === "text") {
+        regIcon.classList.remove("bi-eye");
+        regIcon.classList.add("bi-eye-slash");
+      } else {
+        regIcon.classList.remove("bi-eye-slash");
+        regIcon.classList.add("bi-eye");
+      }
+    });
+  }
+
+  // 2. Enable "Register" Button ONLY when Checkbox is ticked
+  const termsCheckbox = document.getElementById("agree_terms");
+  const submitBtn = document.getElementById("submit_btn");
+
+  if (termsCheckbox && submitBtn) {
+    // Initial Check
+    submitBtn.disabled = !termsCheckbox.checked;
+
+    // Listener
+    termsCheckbox.addEventListener("change", function () {
+      submitBtn.disabled = !this.checked;
+    });
+  }
+  // --- 3. NEW: AUTO-SCROLL TO ERRORS (Added this) ---
+  document.addEventListener("DOMContentLoaded", () => {
+    // We target the 'main' tag or the specific container holding the messages
+    const formContainer = document.querySelector("main");
+
+    const hasFlashMessages = document.querySelector(".alert");
+    const hasValidationErrors = document.querySelector(".text-danger");
+
+    if (formContainer && (hasFlashMessages || hasValidationErrors)) {
+      // Scroll to the top of the main container so users see the Alert immediately
+      formContainer.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+
+    // --- 4. REAL-TIME PASSWORD VALIDATION ---
+    const passwordInput = document.getElementById("reg-password");
+    const criteriaBox = document.getElementById("pwd-criteria");
+
+    // The Rules (Must match your Python validators.py)
+    const rules = {
+      len: (val) => val.length >= 8 && val.length <= 128,
+      upper: (val) => /[A-Z]/.test(val),
+      lower: (val) => /[a-z]/.test(val),
+      num: (val) => /\d/.test(val),
+      spec: val => /[^a-zA-Z0-9]/.test(val),
+    };
+
+    if (passwordInput && criteriaBox) {
+      // A. Show Box on Focus
+      passwordInput.addEventListener("focus", () => {
+        criteriaBox.classList.remove("d-none");
+      });
+
+      // B. Hide Box on Blur (only if empty or fully valid, optional)
+      // For now, let's keep it visible if they have typed something but it's wrong.
+      passwordInput.addEventListener("blur", () => {
+        if (passwordInput.value === "") {
+          criteriaBox.classList.add("d-none");
+        }
+      });
+
+      // C. Check Input as User Types
+      passwordInput.addEventListener("input", function () {
+        const val = this.value;
+
+        // Loop through each rule
+        for (const [id, checkFn] of Object.entries(rules)) {
+          const item = document.getElementById(`rule-${id}`);
+          const icon = item.querySelector("i");
+
+          if (checkFn(val)) {
+            // Success State
+            item.classList.remove("rule-invalid");
+            item.classList.add("rule-valid");
+            icon.classList.remove("bi-circle");
+            icon.classList.add("bi-check-circle-fill");
+          } else {
+            // Pending State
+            item.classList.remove("rule-valid");
+            item.classList.add("rule-invalid");
+            icon.classList.remove("bi-check-circle-fill");
+            icon.classList.add("bi-circle");
+          }
+        }
+      });
+    }
+  });
 </script>
 {% endblock %}

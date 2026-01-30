@@ -1,93 +1,102 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>You already have an account</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>Account Already Exists</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #f4f4f7;
-            color: #51545E;
+        /* --- GLOBAL RESETS --- */
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
+        
+        /* --- LIGHT MODE (DEFAULT) --- */
+        body { background-color: #f4f4f7; color: #51545E; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        
+        /* HEADER - Neutral/Blue for Info */
+        .header { background-color: #0d6efd; padding: 30px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
+        
+        .content { padding: 40px; }
+        .footer { background-color: #f9f9f9; padding: 30px 20px; text-align: center; font-size: 12px; color: #989ea4; border-top: 1px solid #eaeaec; }
+        
+        /* --- ELEMENTS --- */
+        a { color: #0d6efd; text-decoration: none; }
+        
+        /* Button - Primary Blue */
+        .btn { display: inline-block; background-color: #0d6efd; color: #ffffff !important; text-decoration: none; padding: 12px 30px; border-radius: 50px; font-weight: bold; font-size: 16px; margin: 20px 0; }
+        .btn:hover { background-color: #0b5ed7; }
+        
+        .secondary-link { font-size: 14px; color: #0d6efd; text-decoration: underline; }
+        .sub-text { font-size: 14px; color: #888; margin-top: 30px; }
+        
+        /* --- DARK MODE OVERRIDES --- */
+        @media (prefers-color-scheme: dark) {
+            body, .wrapper { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
+            .container { background-color: #2d2d2d !important; box-shadow: none !important; }
+            .content { color: #e0e0e0 !important; }
+            .header h1 { color: #ffffff !important; }
+            .footer { background-color: #252525 !important; border-top: 1px solid #333 !important; color: #888 !important; }
+            .sub-text { color: #aaa !important; }
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
-        .content-card {
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            padding: 40px;
-            text-align: center;
-        }
-        .btn {
-            display: inline-block;
-            background-color: #007bff; /* Primary Blue */
-            color: #ffffff;
-            text-decoration: none;
-            padding: 12px 30px;
-            border-radius: 5px;
-            font-weight: bold;
-            margin: 20px 0;
-            font-size: 16px;
-        }
-        .btn:hover {
-            background-color: #0056b3;
-        }
-        .info-text {
-            font-size: 16px;
-            line-height: 1.6;
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .secondary-link {
-            font-size: 14px;
-            color: #007bff;
-            text-decoration: none;
-        }
-        .footer {
-            text-align: center;
-            font-size: 12px;
-            color: #a8aaaf;
-            margin-top: 20px;
-            line-height: 1.5;
+
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media screen and (max-width: 600px) {
+            .content { padding: 20px !important; }
+            .header { padding: 20px !important; }
+            .btn { display: block; width: 100%; text-align: center; box-sizing: border-box; }
         }
     </style>
 </head>
 <body>
+    <div class="wrapper">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="padding-top: 40px;">
+                    <div class="container">
+                        
+                        <div class="header">
+                            <h1>Account Exists</h1>
+                        </div>
 
-    <div class="container">
-        <div class="content-card">
-            
-            <h2 style="color: #333; margin-top: 0;">Account Exists</h2>
-            
-            <p class="info-text">Hello {{ name }},</p>
-            
-            <p class="info-text">
-                We received a request to create a new account with this email address.
-                <strong>Good news! You are already registered.</strong>
-            </p>
+                        <div class="content">
+                            <p>Hello <strong>{{ name }}</strong>,</p>
+                            
+                            <p>We received a request to create a new account with this email address.</p>
+                            <p><strong>Good news! You are already registered with us.</strong></p>
+                            
+                            <div style="text-align: center;">
+                                <a href="{{ login_url }}" class="btn">Log In Here</a>
+                            </div>
+                            
+                            <p class="sub-text">
+                                Forgot your password? <a href="{{ reset_url }}" class="secondary-link">Reset it here</a>.
+                            </p>
+                            
+                            <p style="font-size: 12px; color: #999; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+                                If you did not attempt to register, you can safely ignore this email.
+                            </p>
+                        </div>
 
-            <a href="{{ login_url }}" class="btn">Log In Here</a>
+                        <div class="footer">
+                            <p>Sent by <strong>Blog App</strong></p>
+                            <p>You received this email because you requested a specific action on your account.<br>
+                            If you didn't request this, you can safely ignore it.</p>
+                            
+                            <div style="margin-top: 10px;">
+                                <a href="{{ privacy_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Privacy Policy</a> • 
+                                <a href="{{ support_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Support</a>
+                            </div>
+                            
+                            <p style="margin-top: 20px;">&copy; {{ current_year }} Blog App Inc.</p>
+                        </div>
 
-            <p style="margin-top: 30px; font-size: 14px; color: #666;">
-                Forgot your password? <a href="{{ reset_url }}" class="secondary-link">Reset it here</a>.
-            </p>
-
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-            <p style="font-size: 12px; color: #999;">
-                If you did not attempt to register, you can safely ignore this email.
-            </p>
-
-        </div>
-
-        <div class="footer">
-            <p>Thanks,<br>The Blog Team</p>
-        </div>
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
-
 </body>
 </html>

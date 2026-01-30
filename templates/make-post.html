@@ -1,96 +1,168 @@
-{% extends "base.html" %}
+{% extends "base.html" %} 
 
 {% block header %}
-<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/edit-bg.jpg') }}')">
+<style>
+  /* --- IMAGE PREVIEW STYLES --- */
+  .image-preview-container {
+    width: 100%;
+    aspect-ratio: 16 / 9; /* Matches your Index/Profile grid standard */
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+  
+  .image-preview-container.has-image {
+    border: none;
+    background-color: transparent;
+  }
+
+  .image-preview-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none; /* Hidden until loaded */
+  }
+
+  .preview-placeholder {
+    text-align: center;
+    color: #adb5bd;
+  }
+</style>
+
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/edit-bg.jpg') }}')"
+>
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
         <div class="page-heading">
           {% if is_edit %}
-            <h1>Edit Post</h1>
-            <span class="subheading">Refine your content.</span>
+          <h1>Edit Post</h1>
+          <span class="subheading">Refine your content.</span>
           {% else %}
-            <h1>New Post</h1>
-            <span class="subheading">Share your story with the world.</span>
+          <h1>New Post</h1>
+          <span class="subheading">Share your story with the world.</span>
           {% endif %}
         </div>
       </div>
     </div>
   </div>
 </header>
-{% endblock %}
+{% endblock %} 
 
 {% block content %}
 <main class="mb-4">
   <div class="container px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
+      
+      <div class="col-md-10 col-lg-8">
+        {% with messages = get_flashed_messages(with_categories=true) %} 
+          {% if messages %} 
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %} 
+          {% endif %} 
+        {% endwith %}
+      </div>
+
       <div class="col-md-10 col-lg-8 col-xl-7">
-        
         <form method="POST" novalidate>
           {{ form.hidden_tag() }}
-          
+
+          <div class="mb-4">
+            <label class="form-label fw-bold text-muted small text-uppercase">Cover Image</label>
+            <div class="image-preview-container mb-3" id="preview-box">
+              <div class="preview-placeholder">
+                <i class="bi bi-image fs-1 d-block mb-2"></i>
+                <span class="small">Image preview will appear here</span>
+              </div>
+              <img id="image-preview" src="" alt="Cover Preview" />
+            </div>
+
+            <div class="form-floating">
+              {{ form.img_url(class="form-control", placeholder="Image URL", id="img_url_input") }}
+              {{ form.img_url.label }}
+              {% if form.img_url.errors %}
+                <span class="text-danger small">{{ form.img_url.errors[0] }}</span>
+              {% endif %}
+            </div>
+          </div>
+
           <div class="form-floating mb-3">
             {{ form.title(class="form-control", placeholder="Title") }}
             {{ form.title.label }}
             {% if form.title.errors %}
-                <span class="text-danger small">{{ form.title.errors[0] }}</span>
+              <span class="text-danger small">{{ form.title.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="form-floating mb-3">
+          <div class="form-floating mb-4">
             {{ form.subtitle(class="form-control", placeholder="Subtitle") }}
             {{ form.subtitle.label }}
             {% if form.subtitle.errors %}
-                <span class="text-danger small">{{ form.subtitle.errors[0] }}</span>
+              <span class="text-danger small">{{ form.subtitle.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="form-floating mb-3">
-            {{ form.img_url(class="form-control", placeholder="Image URL") }}
-            {{ form.img_url.label }}
-            {% if form.img_url.errors %}
-                <span class="text-danger small">{{ form.img_url.errors[0] }}</span>
-            {% endif %}
-          </div>
-          
           <div class="mb-4">
-            {{ form.body.label(class="form-label fw-bold text-muted") }}
-            {{ form.body(class="form-control", style="height: 300px") }} {% if form.body.errors %}
-                <span class="text-danger small">{{ form.body.errors[0] }}</span>
+            {{ form.body.label(class="form-label fw-bold text-muted small text-uppercase") }}
+            {{ form.body(class="form-control", id="body") }} 
+            {% if form.body.errors %}
+              <span class="text-danger small">{{ form.body.errors[0] }}</span>
             {% endif %}
           </div>
 
-          <div class="card bg-light border-0 mb-4">
-            <div class="card-body">
-                <div class="form-check form-switch">
-                    {{ form.can_comment(class="form-check-input", style="cursor: pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
-                    <div class="ms-2">
-                        <label class="form-check-label fw-bold" for="can_comment">Enable Comments</label>
-                        <div class="text-muted small">Allow users to discuss this post.</div>
-                    </div>
+          <div class="card bg-light border-0 mb-5 rounded-3">
+            <div class="card-body p-3">
+              <div class="form-check form-switch d-flex align-items-center ps-5">
+                {{ form.can_comment(class="form-check-input", style="cursor: pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
+                <div class="ms-3">
+                  <label class="form-check-label fw-bold" for="can_comment">Enable Comments</label>
+                  <div class="text-muted small" style="line-height: 1.2">Allow users to discuss this post.</div>
                 </div>
+              </div>
             </div>
           </div>
 
-          <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-             <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-secondary me-md-2">Cancel</a>
-             {{ form.submit(class="btn btn-primary") }}
-          </div>
-          
-        </form>
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end align-items-center">
+            
+            <a href="{{ url_for('get_all_posts') }}" 
+               onclick="if(document.referrer && document.referrer.indexOf(window.location.host) !== -1) { history.back(); return false; }" 
+               class="btn btn-outline-secondary rounded-pill px-4 me-2">
+               <i class="bi bi-arrow-left me-1"></i> Cancel
+            </a>
 
+            {% if is_edit %}
+                {{ form.submit(class="btn btn-primary rounded-pill px-5 shadow-sm fw-bold", value="Update") }}
+            {% else %}
+                {{ form.submit(class="btn btn-success rounded-pill px-5 shadow-sm fw-bold", value="Publish") }}
+            {% endif %}
+          </div>
+
+        </form>
       </div>
     </div>
   </div>
 </main>
-{% endblock %}
+{% endblock %} 
 
 {% block scripts %}
 <script src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
 
 <script>
+  // --- TinyMCE Init ---
   tinymce.init({
-    selector: '#body', // Target the body field ID
+    selector: '#body',
     height: 500,
     menubar: true,
     plugins: [
@@ -102,9 +174,53 @@
       'bold italic backcolor | alignleft aligncenter ' +
       'alignright alignjustify | bullist numlist outdent indent | ' +
       'removeformat | help',
-    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+    content_style: 'body { font-family:Inter,Helvetica,Arial,sans-serif; font-size:14px; line-height: 1.6; }',
     automatic_uploads: true,
     file_picker_types: 'image',
+  });
+
+  // --- Real-Time Image Preview Logic ---
+  document.addEventListener("DOMContentLoaded", function() {
+    const urlInput = document.getElementById('img_url_input');
+    const previewImg = document.getElementById('image-preview');
+    const previewBox = document.getElementById('preview-box');
+    const placeholder = document.querySelector('.preview-placeholder');
+
+    function updatePreview() {
+      const url = urlInput.value.trim();
+      if (url) {
+        previewImg.src = url;
+        previewImg.style.display = 'block';
+        placeholder.style.display = 'none';
+        previewBox.classList.add('has-image');
+      } else {
+        previewImg.style.display = 'none';
+        placeholder.style.display = 'block';
+        previewBox.classList.remove('has-image');
+      }
+    }
+
+    // Run on load (for edit mode) and on input change
+    updatePreview();
+    if (urlInput) {
+      urlInput.addEventListener('input', updatePreview);
+  }
+    
+    // Handle broken images
+    previewImg.onerror = function() {
+        this.style.display = 'none';
+        placeholder.style.display = 'block';
+        previewBox.classList.remove('has-image');
+    };
+
+    // --- 3. AUTO-SCROLL TO ERRORS/ALERTS ---
+    const mainContainer = document.querySelector("main"); 
+    const hasFlashMessages = document.querySelector(".alert");
+    const hasValidationErrors = document.querySelector(".text-danger");
+
+    if (mainContainer && (hasFlashMessages || hasValidationErrors)) {
+        mainContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 </script>
 {% endblock %}

@@ -5,9 +5,9 @@ from flask_ckeditor import CKEditorField
 from utils.validators import validate_strong_password
 
 class CreatePostForm(FlaskForm):
-    title = StringField("Blog Post Title", validators=[DataRequired()])
-    subtitle = StringField("Subtitle", validators=[DataRequired()])
-    img_url = StringField("Blog Image URL", validators=[DataRequired(), URL()])
+    title = StringField("Blog Post Title", validators=[DataRequired(), Length(max=250, message="Title cannot exceed 250 characters.")])
+    subtitle = StringField("Subtitle", validators=[DataRequired(), Length(max=250, message="Subtitle cannot exceed 250 characters.")])
+    img_url = StringField("Blog Image URL", validators=[DataRequired(), URL(), Length(max=500, message="Image URL is too long.")])
     # body = CKEditorField("Blog Content", validators=[DataRequired()])
     body = TextAreaField("Blog Content", validators=[DataRequired()])
     # Default is True (checked) so comments are enabled by default
@@ -37,7 +37,7 @@ class RegisterForm(FlaskForm):
         render_kw={"class": "form-control", "placeholder": "Choose a unique username"}
     )
 
-    name = StringField("Name", validators=[DataRequired(), Length(min=1, max=120)])
+    name = StringField("Name", validators=[DataRequired(), Length(max=120, message="Name cannot exceed 120 characters.")])
     
     password = PasswordField(
         "Password",
@@ -46,10 +46,16 @@ class RegisterForm(FlaskForm):
             validate_strong_password
         ]
     )
+    # --- NEW: Mandatory Legal Agreement ---
+    # The DataRequired validator ensures the form CANNOT be submitted unless this is checked.
+    agree_terms = BooleanField(
+        "Agree to Terms", 
+        validators=[DataRequired(message="You must agree to the Terms of Service and Privacy Policy to register.")]
+    )
     submit = SubmitField("Sign me up")
 
 class LoginForm(FlaskForm):
-    email = EmailField("Email", validators=[DataRequired()])
+    email = EmailField("Email", validators=[DataRequired(), Email()])
     password = PasswordField("Password", validators=[DataRequired()])
     submit = SubmitField("Let Me In!")
 
@@ -66,12 +72,12 @@ class CommentForm(FlaskForm):
     submit = SubmitField("Submit Comment")
 
 class ContactForm(FlaskForm):
-    name = StringField("Name", validators=[DataRequired(), Length(max=100)])
+    name = StringField("Name", validators=[DataRequired(), Length(max=120, message="Name cannot exceed 120 characters.")])
     email = StringField("Email", validators=[DataRequired(), Email()])
     phone = StringField("Phone", validators=[DataRequired(), Length(max=20)])
     message = TextAreaField(
         "Message",
-        validators=[DataRequired(), Length(min=10, max=2000)]
+        validators=[DataRequired(), Length(min=10, max=2000, message="Message must be between 10 and 2000 characters.")]
     )
     submit = SubmitField("Send Message")
 
@@ -102,17 +108,17 @@ class ResetPasswordForm(FlaskForm):
     submit = SubmitField("Reset Password")
 
 class DeleteReasonForm(FlaskForm):
-    reason = TextAreaField("Reason for deletion", validators=[DataRequired()])
+    reason = TextAreaField("Reason for deletion", validators=[DataRequired(), Length(max=1000, message="Reason cannot exceed 1000 characters.")])
     submit = SubmitField("Delete Post & Notify User")
 
 class WarnUserForm(FlaskForm):
-    message = TextAreaField("Warning Message", validators=[DataRequired()])
+    message = TextAreaField("Warning Message", validators=[DataRequired(), Length(max=2000, message="Warning message cannot exceed 2000 characters.")])
     submit = SubmitField("Send Warning Email")
 
 class MessageForm(FlaskForm):
     message = TextAreaField(
         'Message', 
-        validators=[DataRequired(), Length(min=1, max=1000)],
+        validators=[DataRequired(), Length(max=1000, message="Message cannot exceed 1000 characters.")],
         render_kw={"rows": 5, "placeholder": "Write your private message here..."}
     )
     submit = SubmitField('Send Message')
@@ -133,7 +139,7 @@ class SettingsForm(FlaskForm):
         "Display Name", 
         validators=[
             DataRequired(), 
-            Length(min=1, max=50, message="Name must be under 50 characters.")
+            Length(max=50, message="Name cannot exceed 50 characters.")
         ],
         render_kw={"class": "form-control", "placeholder": "Update your display name"}
     )
@@ -148,23 +154,29 @@ class SettingsForm(FlaskForm):
     
     # Toggle 1: Engagement (Covers both Authors and Commenters)
     notify_on_comments = BooleanField(
-        "Email me when someone comments on my posts or replies to my comments",
+        "Notify me when someone comments on my posts or replies to my comments",
         render_kw={"class": "form-check-input"} 
     )
     
     # Toggle 2: Newsletter
     notify_new_post = BooleanField(
-        "Email me when a new blog post is published",
+        "Notify me when a new blog post is published",
         render_kw={"class": "form-check-input"}
     )
     
     # Toggle 3: Updates
     notify_post_edit = BooleanField(
-        "Email me when a post is updated/edited",
+        "Notify me when a post is updated/edited",
+        render_kw={"class": "form-check-input"}
+    )
+
+    # Toggle 4: Direct Messages (Notification)
+    notify_on_message = BooleanField(
+        "Notify me when I receive a new private message",
         render_kw={"class": "form-check-input"}
     )
     
-    # Toggle 4: DMs
+    # Toggle 5: DMs
     allow_dms = BooleanField(
         "Allow other users to send me private messages",
         description="Admins can always message you regardless of this setting.",

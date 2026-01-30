@@ -39,7 +39,9 @@
 
           <h5 class="fw-bold mb-3 mt-4 border-bottom pb-2">Profile Details</h5>
 
-          <div class="d-flex align-items-center mb-4 p-3 bg-body-tertiary rounded-3 gap-3">
+          <div
+            class="d-flex align-items-center mb-4 p-3 bg-body-tertiary rounded-3 gap-3"
+          >
             <img
               src="{{ current_user.email | gravatar }}"
               class="rounded-circle me-3 shadow-sm"
@@ -69,7 +71,8 @@
             {{ form.username.label(class="form-label fw-bold text-muted small
             text-uppercase") }}
             <div class="input-group">
-              <span class="input-group-text bg-body-tertiary text-muted border-end-0"
+              <span
+                class="input-group-text bg-body-tertiary text-muted border-end-0"
                 >@</span
               >
               {{ form.username(class="form-control border-start-0 ps-0",
@@ -101,7 +104,7 @@
           <h5 class="fw-bold mb-3 mt-5 border-bottom pb-2">Notifications</h5>
 
           <div class="card border-0 shadow-sm bg-body-tertiary mb-4">
-            <div class="card-body">
+            <div class="card-body ps-4">
               <div class="form-check form-switch mb-4">
                 {{ form.notify_on_comments(class="form-check-input",
                 style="cursor: pointer; width: 3em; height: 1.5em; margin-left:
@@ -132,7 +135,7 @@
                 </div>
               </div>
 
-              <div class="form-check form-switch">
+              <div class="form-check form-switch mb-4">
                 {{ form.notify_post_edit(class="form-check-input",
                 style="cursor: pointer; width: 3em; height: 1.5em; margin-left:
                 -3.5em;") }}
@@ -145,13 +148,29 @@
                   </div>
                 </div>
               </div>
+
+              <div class="form-check form-switch">
+                {{ form.notify_on_message(class="form-check-input",
+                style="cursor: pointer; width: 3em; height: 1.5em; margin-left:
+                -3.5em;") }}
+                <div class="ms-2">
+                  <label
+                    class="form-check-label fw-bold"
+                    for="notify_on_message"
+                    >Message Alerts</label
+                  >
+                  <div class="text-muted small" style="line-height: 1.2">
+                    Email me when I receive a new private message.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <h5 class="fw-bold mb-3 mt-5 border-bottom pb-2">Privacy</h5>
 
           <div class="card border-0 shadow-sm bg-body-tertiary mb-4">
-            <div class="card-body">
+            <div class="card-body ps-4">
               <div class="form-check form-switch">
                 {{ form.allow_dms(class="form-check-input", style="cursor:
                 pointer; width: 3em; height: 1.5em; margin-left: -3.5em;") }}
@@ -160,7 +179,8 @@
                     >Direct Messaging</label
                   >
                   <div class="text-muted small" style="line-height: 1.2">
-                    Allow other users to send me private messages. (Admins can always contact you).
+                    Allow other users to send me private messages. (Admins can
+                    always contact you).
                   </div>
                 </div>
               </div>
@@ -169,36 +189,183 @@
 
           <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-5">
             <a
-              href="{{ url_for('get_all_posts') }}"
+              href="{{ url_for('settings') }}"
               class="btn btn-outline-secondary me-md-2"
               >Cancel</a
             >
             {{ form.submit(class="btn btn-primary") }}
           </div>
         </form>
-        <div class="mt-5">
-          <h5 class="fw-bold mb-3 border-bottom pb-2">Support</h5>
 
-          <div class="list-group shadow-sm">
+        <h5 class="fw-bold mb-3 mt-5 border-bottom pb-2">Legal & Community</h5>
+        <div class="card mb-5 border-0 shadow-sm">
+          <div class="list-group list-group-flush rounded-3">
             <a
-              href="{{ url_for('contact') }}"
-              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 gap-3"
+              href="{{ url_for('legal', page_name='guidelines') }}"
+              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
             >
-              <div class="d-flex align-items-center">
-                <i class="bi bi-life-preserver fs-5 me-3 text-primary"></i>
-                <div>
-                  <div class="fw-bold">Help & Support</div>
-                  <div class="text-muted small">
-                    Have questions? Contact our support team.
-                  </div>
-                </div>
-              </div>
+              <span class="d-flex align-items-center">
+                <i class="bi bi-people-fill me-3 text-primary fs-5"></i>
+                <span class="fw-medium">Community Guidelines</span>
+              </span>
               <i class="bi bi-chevron-right text-muted small"></i>
             </a>
+
+            <a
+              href="{{ url_for('legal', page_name='privacy') }}"
+              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
+            >
+              <span class="d-flex align-items-center">
+                <i class="bi bi-shield-lock-fill me-3 text-success fs-5"></i>
+                <span class="fw-medium">Privacy Policy</span>
+              </span>
+              <i class="bi bi-chevron-right text-muted small"></i>
+            </a>
+
+            <a
+              href="{{ url_for('legal', page_name='terms') }}"
+              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
+            >
+              <span class="d-flex align-items-center">
+                <i
+                  class="bi bi-file-earmark-text-fill me-3 text-secondary fs-5"
+                ></i>
+                <span class="fw-medium">Terms of Service</span>
+              </span>
+              <i class="bi bi-chevron-right text-muted small"></i>
+            </a>
+          </div>
+        </div>
+
+        <h5 class="fw-bold mb-3 border-bottom pb-2">Support</h5>
+        <div class="list-group shadow-sm mb-5 rounded-3">
+          <a
+            href="{{ url_for('contact') }}"
+            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 gap-3"
+          >
+            <div class="d-flex align-items-center">
+              <i class="bi bi-life-preserver fs-5 me-3 text-primary"></i>
+              <div>
+                <div class="fw-bold">Help & Support</div>
+                <div class="text-muted small">
+                  Have questions? Contact our support team.
+                </div>
+              </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted small"></i>
+          </a>
+        </div>
+
+        <h5
+          class="fw-bold mb-3 mt-5 pb-2 text-danger border-bottom border-danger-subtle d-flex align-items-center"
+        >
+          <i class="bi bi-exclamation-triangle me-2"></i>Danger Zone
+        </h5>
+
+        <div
+          class="card border-danger border-opacity-25 shadow-sm mb-5"
+          style="background-color: rgba(220, 53, 69, 0.03)"
+        >
+          <div
+            class="card-body p-4 d-flex justify-content-between align-items-center flex-wrap gap-3"
+          >
+            <div>
+              <h6 class="fw-bold text-danger mb-2">Delete Account</h6>
+              <div
+                class="text-muted small"
+                style="max-width: 500px; line-height: 1.6"
+              >
+                <ul class="list-unstyled mb-0">
+                  <li class="mb-2 d-flex">
+                    <i class="bi bi-trash3 text-danger me-2 mt-1"></i>
+                    <span
+                      >Your profile, posts, and personal data will be
+                      permanently removed.</span
+                    >
+                  </li>
+                  <li class="d-flex">
+                    <i
+                      class="bi bi-info-circle-fill text-secondary me-2 mt-1"
+                    ></i>
+                    <span>
+                      Your sent messages <strong>remain visible</strong> to
+                      recipients, but your name will appear as "Deleted User".
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <button
+              class="btn btn-danger px-4 py-2 fw-bold rounded-pill shadow-sm"
+              data-bs-toggle="modal"
+              data-bs-target="#deleteAccountModal"
+            >
+              Delete Account
+            </button>
           </div>
         </div>
       </div>
     </div>
   </div>
 </main>
+
+<div
+  class="modal fade"
+  id="deleteAccountModal"
+  tabindex="-1"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger">Delete Account?</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-muted">
+        Are you absolutely sure? This action cannot be undone.
+        <br /><br />
+        Your posts will be removed, but your chat messages will remain visible
+        to recipients labeled as "Deleted User".
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <form action="{{ url_for('delete_account') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-danger">
+            Yes, Delete My Account
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  // --- AUTO-SCROLL TO ERRORS/ALERTS ---
+  document.addEventListener("DOMContentLoaded", () => {
+    // Target the main container
+    const mainContainer = document.querySelector("main");
+
+    // Check for Flash Messages (Bootstrap Alerts)
+    const hasFlashMessages = document.querySelector(".alert");
+
+    // Check for Validation Errors (Text Danger)
+    // Note: In settings.html, errors are inside .text-danger divs
+    const hasValidationErrors = document.querySelector(".text-danger");
+
+    // If the container exists AND (we have an alert OR a form error)
+    if (mainContainer && (hasFlashMessages || hasValidationErrors)) {
+      // Smoothly scroll to the top so the message is center stage
+      mainContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+</script>
 {% endblock %}

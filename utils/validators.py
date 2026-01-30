@@ -19,10 +19,8 @@ def validate_strong_password(form, field):
     # -----------------------------
     # Basic length check
     # -----------------------------
-    if len(password) < 8:
-        raise ValidationError(
-            "Password must be at least 8 characters long."
-        )
+    if len(password) < 8 or len(password) > 128:
+        raise ValidationError("Password must be between 8 and 128 characters.")
 
     # -----------------------------
     # Character class checks
@@ -42,9 +40,9 @@ def validate_strong_password(form, field):
             "Password must contain at least one number."
         )
 
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>_\-+=\[\]\\;/~`]", password):
+    if not re.search(r"[^a-zA-Z0-9]", password):
         raise ValidationError(
-            "Password must contain at least one special character."
+            "Password must contain at least one special character or symbol."
         )
 
     # -----------------------------

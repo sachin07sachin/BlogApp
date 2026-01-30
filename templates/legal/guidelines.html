@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block header %}
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+    <div class="container position-relative px-4 px-lg-5">
+        <div class="row gx-4 gx-lg-5 justify-content-center">
+            <div class="col-md-10 col-lg-8 col-xl-7">
+                <div class="page-heading">
+                    <h1>Community Guidelines</h1>
+                    <span class="subheading">Keeping our community safe</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<style>
+    /* Scoped styles for the Guidelines Page to ensure modern list styling */
+    .guideline-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .guideline-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.08) !important;
+    }
+    .list-icon-check {
+        font-size: 1.2rem;
+        vertical-align: text-bottom;
+    }
+</style>
+
+<main class="mb-4">
+    <div class="container px-4 px-lg-5">
+        <div class="row gx-4 gx-lg-5 justify-content-center">
+            <div class="col-md-10 col-lg-8 col-xl-7">
+
+                <div class="mb-2">
+                    <a href="{{ url_for('get_all_posts') }}" 
+                       onclick="if(document.referrer && document.referrer.indexOf(window.location.host) !== -1) { history.back(); return false; }" 
+                       class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm">
+                       <i class="bi bi-arrow-left me-1"></i> Back
+                    </a>
+                </div>
+
+                <div class="text-center mb-5">
+                    <p class="lead text-muted fs-4">We want Blog App to be a safe and welcoming place for everyone. Please help us keep it that way.</p>
+                </div>
+
+                <div class="card border-0 shadow rounded-3 mb-4 guideline-card" style="border-left: 5px solid #198754 !important;">
+                    <div class="card-body p-4 p-sm-5">
+                        <h3 class="card-title text-success fw-bold mb-4 d-flex align-items-center">
+                            <i class="bi bi-check-circle-fill me-3 fs-2"></i> The Do's
+                        </h3>
+                        <ul class="list-unstyled mb-0">
+                            <li class="mb-3 d-flex">
+                                <i class="bi bi-check-lg text-success list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Be Respectful:</strong> Treat others with kindness. Healthy debate is encouraged, but personal attacks are not.</span>
+                            </li>
+                            <li class="mb-3 d-flex">
+                                <i class="bi bi-check-lg text-success list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Share Knowledge:</strong> Use your posts to teach, inspire, or entertain.</span>
+                            </li>
+                            <li class="d-flex">
+                                <i class="bi bi-check-lg text-success list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Report Issues:</strong> If you see something that violates these rules, please let us know.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow rounded-3 mb-5 guideline-card" style="border-left: 5px solid #dc3545 !important;">
+                    <div class="card-body p-4 p-sm-5">
+                        <h3 class="card-title text-danger fw-bold mb-4 d-flex align-items-center">
+                            <i class="bi bi-x-circle-fill me-3 fs-2"></i> The Don'ts
+                        </h3>
+                        <ul class="list-unstyled mb-0">
+                            <li class="mb-3 d-flex">
+                                <i class="bi bi-x-lg text-danger list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Hate Speech:</strong> We have zero tolerance for hate speech, bullying, or harassment.</span>
+                            </li>
+                            <li class="mb-3 d-flex">
+                                <i class="bi bi-x-lg text-danger list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Spam:</strong> Do not use the platform purely for self-promotion or link farming.</span>
+                            </li>
+                            <li class="d-flex">
+                                <i class="bi bi-x-lg text-danger list-icon-check me-2 flex-shrink-0"></i>
+                                <span><strong>Illegal Content:</strong> Do not post content that violates any laws or infringes on copyrights.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-light rounded-3 border border-light">
+                    <h2 class="section-heading h4 fw-bold mb-3"><i class="bi bi-shield-exclamation me-2"></i>Enforcement</h2>
+                    <p class="text-muted">If you violate these guidelines, we may take action including:</p>
+                    <ul class="mb-0 text-muted">
+                        <li>Removing your content (posts or comments).</li>
+                        <li>Issuing a warning to your account.</li>
+                        <li>Suspending or permanently banning your account.</li>
+                    </ul>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 
 {% block header %}
+<style>
+  /* Optional: Specific tweaks for the contact card if needed, 
+     otherwise it inherits the polished look of your other forms. */
+  .form-control:focus {
+    z-index: 2;
+  }
+</style>
+
 <header
   class="masthead"
   style="background-image: url('{{ url_for('static', filename='assets/img/contact-bg.jpg') }}')"
@@ -27,7 +35,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4" role="alert">
                 {{ message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
               </div>
@@ -35,47 +43,56 @@
           {% endif %}
         {% endwith %}
 
-        <form method="POST" novalidate>
-          {{ form.hidden_tag() }}
+        <div class="card border-0 shadow rounded-3 my-3">
+            <div class="card-body p-4 p-sm-5">
+                
+                <h3 class="card-title text-center mb-4 fw-light fs-4">Get in Touch</h3>
 
-          <div class="form-floating mb-3">
-            {{ form.name(class="form-control", placeholder="Name") }}
-            {{ form.name.label() }}
-            {% for error in form.name.errors %}
-              <span class="text-danger" style="font-size: 0.8rem;">{{ error }}</span>
-            {% endfor %}
-          </div>
+                <form method="POST" novalidate>
+                  {{ form.hidden_tag() }}
 
-          <div class="form-floating mb-3">
-            {{ form.email(class="form-control", placeholder="Email") }}
-            {{ form.email.label() }}
-            {% for error in form.email.errors %}
-              <span class="text-danger" style="font-size: 0.8rem;">{{ error }}</span>
-            {% endfor %}
-          </div>
+                  <div class="form-floating mb-3">
+                    {{ form.name(class="form-control", placeholder="Name") }}
+                    {{ form.name.label() }}
+                    {% for error in form.name.errors %}
+                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    {% endfor %}
+                  </div>
 
-          <div class="form-floating mb-3">
-            {{ form.phone(class="form-control", placeholder="Phone") }}
-            {{ form.phone.label() }}
-            {% for error in form.phone.errors %}
-              <span class="text-danger" style="font-size: 0.8rem;">{{ error }}</span>
-            {% endfor %}
-          </div>
+                  <div class="form-floating mb-3">
+                    {{ form.email(class="form-control", placeholder="Email") }}
+                    {{ form.email.label() }}
+                    {% for error in form.email.errors %}
+                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    {% endfor %}
+                  </div>
 
-          <div class="form-floating mb-3">
-            {{ form.message(class="form-control", style="height: 12rem") }}
-            {{ form.message.label() }}
-            {% for error in form.message.errors %}
-              <span class="text-danger" style="font-size: 0.8rem;">{{ error }}</span>
-            {% endfor %}
-          </div>
+                  <div class="form-floating mb-3">
+                    {{ form.phone(class="form-control", placeholder="Phone") }}
+                    {{ form.phone.label() }}
+                    {% for error in form.phone.errors %}
+                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    {% endfor %}
+                  </div>
 
-          <button class="btn btn-primary text-uppercase" type="submit">
-            Send Message
-          </button>
-        </form>
+                  <div class="form-floating mb-4">
+                    {{ form.message(class="form-control", style="height: 12rem", placeholder="Message") }}
+                    {{ form.message.label() }}
+                    {% for error in form.message.errors %}
+                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    {% endfor %}
+                  </div>
 
-      </div>
+                  <div class="d-grid">
+                      <button class="btn btn-primary btn-lg rounded-pill shadow-sm fw-bold" type="submit">
+                        <i class="bi bi-send-fill me-2"></i>Send Message
+                      </button>
+                  </div>
+                </form>
+
+            </div>
+        </div>
+        </div>
     </div>
   </div>
 </main>
@@ -83,7 +100,8 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener("DOMContentLoaded", () => { // Arrow functions are also more modern!
+    document.addEventListener("DOMContentLoaded", () => { 
+        // ID targets the column wrapper, ensuring scroll works even with the new card inside
         const element = document.getElementById("contactFormSection");
         
         // Check if there are any Bootstrap alerts (Flash Messages)
