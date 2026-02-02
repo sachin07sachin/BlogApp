@@ -1,7 +1,8 @@
-{% extends "base.html" %}
-
-{% block header %}
-<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+{% extends "base.html" %} {% block header %}
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')"
+>
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -13,48 +14,70 @@
     </div>
   </div>
 </header>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="container px-4 px-lg-5">
   <div class="row gx-4 gx-lg-5 justify-content-center">
     <div class="col-md-10 col-lg-8 col-xl-7">
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %} {% for category, message in messages %}
+      <div
+        class="alert alert-{{ category }} alert-dismissible fade show"
+        role="alert"
+      >
+        {{ message }}
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="alert"
+        ></button>
+      </div>
+      {% endfor %} {% endif %} {% endwith %}
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
-      <p>You are about to delete a post by <strong>{{ post.author.name }}</strong>.</p>
+      <p>
+        You are about to delete a post by
+        <strong>{{ post.author.name }}</strong>.
+      </p>
       <p>Please provide a reason. This will be emailed to the user.</p>
-      
+
       <form method="POST" novalidate>
         {{ form.hidden_tag() }}
 
         <div class="mb-3">
-          {{ form.reason.label(class="form-label") }}
-          {{ form.reason(class="form-control", rows="5") }}
-          
-          {% if form.reason.errors %}
-            <div class="text-danger">
-              {% for error in form.reason.errors %}
-                <small>{{ error }}</small>
-              {% endfor %}
-            </div>
-          {% endif %}
+          {{ form.reason.label(class="form-label") }} {{
+          form.reason(class="form-control", rows="5") }} {% for error in
+          form.reason.errors %}
+          <div class="text-danger mt-1">
+            <small>{{ error }}</small>
+          </div>
+          {% endfor %}
         </div>
 
         {{ form.submit(class="btn btn-danger") }}
-        <a href="{{ url_for('get_all_posts') }}" class="btn btn-secondary ms-2">Cancel</a>
+        <a href="{{ url_for('get_all_posts') }}" class="btn btn-secondary ms-2"
+          >Cancel</a
+        >
       </form>
-
     </div>
   </div>
 </div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // 1. Prioritize Flash Messages (Global Alerts)
+    const flashMessage = document.querySelector(".alert.alert-dismissible");
+
+    // 2. Look for Field Validation Errors
+    // This strictly looks for the structure: <div class="text-danger"><small>Error</small></div>
+    // This prevents false positives from red headers or other red text.
+    const formError = document.querySelector(".text-danger small");
+
+    // 3. Determine the target (Flash takes priority)
+    const target = flashMessage || formError;
+
+    if (target) {
+      // Scroll the specific element into the center of the viewport
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
+</script>
 {% endblock %}

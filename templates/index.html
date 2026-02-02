@@ -291,8 +291,12 @@
     </div>
   </div>
 
-  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-    {% for post in all_posts %}
+  <div
+    class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4"
+    id="posts-container"
+  >
+    {% with posts = all_posts %} {% include "_post_list.html" %} {% endwith %}
+    {# {% for post in all_posts %}
     <div class="col">
       <div class="card post-card h-100" id="post-{{ post.id }}">
         {% if post.img_url %}
@@ -386,7 +390,26 @@
         </div>
       </div>
     </div>
-    {% endfor %}
+    {% endfor %}#}
+  </div>
+  {% if has_next %}
+  <div
+    id="loading-sentinel"
+    data-next-page="{{ next_page }}"
+    class="text-center py-5"
+  >
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div
+    id="end-of-content"
+    class="text-center py-5 text-muted"
+    style="display: none"
+  >
+    <p>You've reached the end!</p>
   </div>
 
   {% else %}
@@ -537,6 +560,49 @@
           else fab.style.bottom = `${defaultBottom}px`;
         }
       });
+    }
+
+    // --- INFINITE SCROLL LOGIC ---
+    const sentinel = document.getElementById("loading-sentinel");
+    const container = document.getElementById("posts-container");
+    const endMessage = document.getElementById("end-of-content");
+    let isLoading = false;
+
+    if (sentinel) {
+      // Create an Observer (Detects when spinner enters screen)
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isLoading) {
+          isLoading = true;
+          const nextPage = sentinel.getAttribute("data-next-page");
+
+          // Fetch the next page of posts
+          fetch(`/posts/load?page=${nextPage}`)
+            .then(response => response.text())
+            .then(html => {
+              if (html.trim().length > 0) {
+                // Add new cards to the grid
+                container.insertAdjacentHTML('beforeend', html);
+                
+                // Re-run time formatting for the new dates (if you have that script)
+                if (window.localizeTimes) window.localizeTimes(container);
+
+                // Prepare for the next page
+                sentinel.setAttribute("data-next-page", parseInt(nextPage) + 1);
+                isLoading = false;
+              } else {
+                // No more posts to load
+                sentinel.remove();
+                if (endMessage) endMessage.style.display = "block";
+              }
+            })
+            .catch(err => {
+              console.error("Error loading posts:", err);
+              sentinel.style.display = "none"; 
+            });
+        }
+      }, { rootMargin: "200px" }); // Start loading 200px before reaching the bottom
+
+      observer.observe(sentinel);
     }
   });
 </script>

@@ -55,7 +55,9 @@
                     {{ form.name(class="form-control", placeholder="Name") }}
                     {{ form.name.label() }}
                     {% for error in form.name.errors %}
-                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    <div class="text-danger mt-1">
+                      <small>{{ error }}</small>
+                    </div>
                     {% endfor %}
                   </div>
 
@@ -63,7 +65,9 @@
                     {{ form.email(class="form-control", placeholder="Email") }}
                     {{ form.email.label() }}
                     {% for error in form.email.errors %}
-                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    <div class="text-danger mt-1">
+                      <small>{{ error }}</small>
+                    </div>
                     {% endfor %}
                   </div>
 
@@ -71,7 +75,9 @@
                     {{ form.phone(class="form-control", placeholder="Phone") }}
                     {{ form.phone.label() }}
                     {% for error in form.phone.errors %}
-                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    <div class="text-danger mt-1">
+                      <small>{{ error }}</small>
+                    </div>
                     {% endfor %}
                   </div>
 
@@ -79,7 +85,9 @@
                     {{ form.message(class="form-control", style="height: 12rem", placeholder="Message") }}
                     {{ form.message.label() }}
                     {% for error in form.message.errors %}
-                      <span class="text-danger small mt-1 d-block"><i class="bi bi-exclamation-circle me-1"></i>{{ error }}</span>
+                    <div class="text-danger mt-1">
+                      <small>{{ error }}</small>
+                    </div>
                     {% endfor %}
                   </div>
 
@@ -100,20 +108,22 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener("DOMContentLoaded", () => { 
-        // ID targets the column wrapper, ensuring scroll works even with the new card inside
-        const element = document.getElementById("contactFormSection");
-        
-        // Check if there are any Bootstrap alerts (Flash Messages)
-        const hasFlashMessages = document.querySelector(".alert");
-        
-        // Check if there are any Validation Errors
-        const hasValidationErrors = document.querySelector(".text-danger");
+  document.addEventListener("DOMContentLoaded", () => {
+    // 1. Prioritize Flash Messages (Global Alerts)
+    const flashMessage = document.querySelector(".alert.alert-dismissible");
+    
+    // 2. Look for Field Validation Errors
+    // This strictly looks for the structure: <div class="text-danger"><small>Error</small></div>
+    // This prevents false positives from red headers or other red text.
+    const formError = document.querySelector(".text-danger small");
 
-        // If the section exists AND (we have alerts OR we have errors)
-        if (element && (hasFlashMessages || hasValidationErrors)) {
-            element.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-    });
+    // 3. Determine the target (Flash takes priority)
+    const target = flashMessage || formError;
+
+    if (target) {
+      // Scroll the specific element into the center of the viewport
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
 </script>
 {% endblock %}

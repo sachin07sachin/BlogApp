@@ -1,0 +1,95 @@
+{% for post in posts %}
+<div class="col">
+  <div class="card post-card h-100" id="post-{{ post.id }}">
+    {% if post.img_url %}
+    <a href="{{ url_for('show_post', post_id=post.id) }}">
+      <div class="card-img-container">
+        <img
+          src="{{ post.img_url }}"
+          class="card-img-top"
+          alt="{{ post.title }}"
+        />
+      </div>
+    </a>
+    {% endif %}
+
+    <div class="card-body p-4 d-flex flex-column">
+      <a
+        href="{{ url_for('show_post', post_id=post.id) }}"
+        class="post-title-link"
+      >
+        <h2 class="card-title fw-bold h3 mb-2">{{ post.title }}</h2>
+        <h3 class="card-subtitle mb-3 text-muted fw-normal h5">
+          {{ post.subtitle }}
+        </h3>
+      </a>
+
+      <div
+        class="card-text text-secondary mb-3"
+        style="font-size: 0.95rem; line-height: 1.6"
+      >
+        {{ post.body | striptags | truncate(150) }}
+      </div>
+
+      <div
+        class="d-flex align-items-end justify-content-between mt-auto border-top pt-3"
+      >
+        <div class="d-flex align-items-center">
+          <img
+            src="{{ post.author.email | gravatar }}"
+            class="rounded-circle me-3"
+            width="40"
+            height="40"
+            alt="Author"
+          />
+          <div class="d-flex flex-column align-items-start">
+            <a
+              href="{{ url_for('user_profile', username=post.author.username) }}"
+              class="author-link mb-0"
+              style="line-height: 1.2"
+            >
+              {{ post.author.name }}
+            </a>
+            <span
+              class="text-muted small smart-date"
+              data-utc="{{ post.date.isoformat() }}"
+              data-style="full"
+              style="font-size: 0.75rem"
+            >
+              {{ post.date.strftime('%d %B %Y') }}
+            </span>
+          </div>
+        </div>
+
+        {% if current_user.is_authenticated %}
+        <div class="d-flex gap-2">
+          {% if current_user.role == "admin" and current_user.id !=
+          post.author.id %}
+          <a
+            href="{{ url_for('warn_post_author', post_id=post.id) }}"
+            class="btn btn-sm btn-warning rounded-pill px-2 py-0"
+            style="font-size: 0.75rem; line-height: 20px"
+          >
+            Warn
+          </a>
+          {% endif %} {% if current_user.id == post.author.id or
+          current_user.role == "admin" %}
+          <button
+            type="button"
+            class="btn btn-sm btn-danger rounded-pill px-2 py-0"
+            style="font-size: 0.75rem; line-height: 20px"
+            data-bs-toggle="modal"
+            data-bs-target="#deletePostModal"
+            data-post-id="{{ post.id }}"
+            data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+          >
+            Delete
+          </button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}

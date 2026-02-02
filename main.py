@@ -7,7 +7,8 @@ import contextlib
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import uuid
-
+import hashlib
+import time
 # Replaced native threading with SocketIO background tasks for Eventlet compatibility
 # from threading import Thread 
 
@@ -46,7 +47,7 @@ from pywebpush import webpush, WebPushException
 from forms import (
     CreatePostForm, RegisterForm, LoginForm,
     CommentForm, ResendVerificationForm, ContactForm, 
-    RequestResetForm, ResetPasswordForm, DeleteReasonForm, WarnUserForm, MessageForm, SettingsForm
+    RequestResetForm, ResetPasswordForm, DeleteReasonForm, WarnUserForm, MessageForm, SettingsForm, AdminDeleteUserForm, DeleteAccountForm
 )
 from utils.email import send_email 
 from utils.captcha import verify_hcaptcha
@@ -296,12 +297,40 @@ class Notification(db.Model):
     
     # Metadata for filtering/cleanup
     category: Mapped[str] = mapped_column(String(50)) # 'comment', 'post', 'edit', 'chat'
-    related_post_id: Mapped[int | None] = mapped_column(Integer) 
+    related_post_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("blog_posts.id", ondelete="CASCADE")) 
+
+    # --- NEW: Comment Link (The Fix) ---
+    related_comment_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("comments.id", ondelete="CASCADE"))
 
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
     recipient = relationship("User", backref="notifications")
+
+class DeletedAccountLog(db.Model):
+    __tablename__ = "deleted_accounts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # We store the ORIGINAL details here before anonymization
+    original_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_username: Mapped[str] = mapped_column(String(30), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False) # Keep ID to link to ghost content if needed
+    
+    reason: Mapped[str] = mapped_column(String(500), nullable=True) # "Why are you leaving?"
+    ip_address: Mapped[str] = mapped_column(String(45), nullable=True) # IPv4/IPv6
+    
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class BannedUser(db.Model):
+    __tablename__ = "banned_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # Indexed for fast lookup during registration
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    banned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    banned_by: Mapped[str] = mapped_column(String(120), nullable=False) # Stores admin username
 
 # -------------------------------------------------------------------
 # 4. HELPERS & DECORATORS
@@ -358,11 +387,49 @@ def clean_html(text):
         strip=True
     )
 
+def get_gravatar_url(email, size=200):
+    """Generates a Gravatar URL for the given email."""
+    email_hash = hashlib.md5(email.lower().strip().encode('utf-8')).hexdigest()
+    return f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d=retro"
+
+def anonymize_user_data(user):
+    """
+    Scrub user data to create a 'Ghost User'.
+    Preserves ID for chat history integrity but removes PII.
+    """
+    random_suffix = uuid.uuid4().hex[:8]
+    
+    # 1. Anonymize Identity
+    user.name = "Deleted User"
+    user.username = f"ghost_{random_suffix}"
+    user.email = f"deleted_{uuid.uuid4().hex}@example.com" # Free up original email
+    user.about_me = None
+    user.password = generate_password_hash(uuid.uuid4().hex) # Impossible login
+    user.email_verified = False
+    
+    # 2. Clear Personal Settings
+    user.notify_on_comments = False
+    user.notify_new_post = False
+    user.notify_post_edit = False
+    user.notify_on_message = False
+    user.allow_dms = False
+    
+    # 3. Delete Public Content (Posts)
+    # Note: We keep comments/messages as "Deleted User" context
+    for post in user.posts:
+        db.session.delete(post)
+    
+    # 4. Remove Push Subscriptions
+    for sub in user.push_subscriptions:
+        db.session.delete(sub)
+        
+    return user
+
 # -------------------------------------------------------------------
 # 5. NOTIFICATION SYSTEM
 # -------------------------------------------------------------------
 
-def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None):
+def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None, related_comment_id=None, icon_url=None, image_url=None):
     """
     Background Task:
     1. Saves notification to DB (Persistence for Daily Digest).
@@ -379,37 +446,78 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                         message=body,
                         link_url=link_url,
                         category=category,
-                        related_post_id=related_post_id
+                        related_post_id=related_post_id,
+                        related_comment_id=related_comment_id
                     )
                     db.session.add(new_notif)
 
-            # B. SEND PUSH (Immediate)
+            # B. SEND RICH PUSH (Immediate)
             subscriptions = db.session.scalars(
                 db.select(PushSubscription).where(PushSubscription.user_id == recipient_id)
             ).all()
 
             if subscriptions:
-                payload = json.dumps({
+                timestamp_ms = int(time.time() * 1000)
+                # --- MODERN PAYLOAD STRUCTURE ---
+                payload_data = {
                     "title": title,
                     "body": body,
-                    "url": link_url
-                })
+                    "url": link_url,
+                    "timestamp": timestamp_ms,
+                    # 1. Avatar of the person causing the action (or App Logo)
+                    "icon": icon_url or url_for('static', filename='assets/favicon.ico', _external=True),
+                    # 2. Rich Image (For New Posts) - Android/Windows only
+                    "image": image_url, 
+                    # 3. Badge (Small monochrome icon for Android status bar)
+                    "badge": url_for('static', filename='assets/badge.png', _external=True),
+                    # 4. Tag (Prevents stacking: updates existing notif instead of adding new one)
+                    "tag": f"{category}_{related_post_id}" if related_post_id else "general"
+                }
+                
+                payload_json = json.dumps(payload_data)
 
                 for sub in subscriptions:
                     try:
                         webpush(
                             subscription_info=json.loads(sub.subscription_json),
-                            data=payload,
+                            data=payload_json,
                             vapid_private_key=VAPID_PRIVATE_KEY,
                             vapid_claims=VAPID_CLAIMS
                         )
                     except WebPushException as ex:
-                        # Clean up expired subscriptions (HTTP 410 Gone)
                         if ex.response and ex.response.status_code == 410:
                             with safe_commit():
                                 db.session.delete(sub)
                         else:
                             logger.error(f"WebPush Error for user {recipient_id}: {ex}")
+
+            # # B. SEND PUSH (Immediate)
+            # subscriptions = db.session.scalars(
+            #     db.select(PushSubscription).where(PushSubscription.user_id == recipient_id)
+            # ).all()
+
+            # if subscriptions:
+            #     payload = json.dumps({
+            #         "title": title,
+            #         "body": body,
+            #         "url": link_url
+            #     })
+
+            #     for sub in subscriptions:
+            #         try:
+            #             webpush(
+            #                 subscription_info=json.loads(sub.subscription_json),
+            #                 data=payload,
+            #                 vapid_private_key=VAPID_PRIVATE_KEY,
+            #                 vapid_claims=VAPID_CLAIMS
+            #             )
+            #         except WebPushException as ex:
+            #             # Clean up expired subscriptions (HTTP 410 Gone)
+            #             if ex.response and ex.response.status_code == 410:
+            #                 with safe_commit():
+            #                     db.session.delete(sub)
+            #             else:
+            #                 logger.error(f"WebPush Error for user {recipient_id}: {ex}")
 
         except Exception as e:
             logger.exception(f"Notification Failed for user {recipient_id}: {e}")
@@ -664,6 +772,15 @@ def register():
     now = datetime.now(timezone.utc).replace(microsecond=0)
     if form.validate_on_submit():
         email = form.email.data.lower().strip()
+
+        # --- 1. BAN CHECK (Industry Standard Enforcement) ---
+        is_banned = db.session.scalar(db.select(BannedUser).where(BannedUser.email == email))
+        if is_banned:
+            logger.warning(f"Banned email attempted registration: {email}")
+            flash("Unable to create account. Please contact support.", "danger")
+            return render_template("register.html", form=form)
+        # ----------------------------------------------------
+
         username = form.username.data.strip()
         
         existing_email = db.session.scalar(db.select(User).where(User.email == email))
@@ -1116,13 +1233,14 @@ def search():
 @login_required
 def settings():
     form = SettingsForm()
+    delete_form = DeleteAccountForm()
     
     if form.validate_on_submit():
         if form.username.data != current_user.username:
             existing_user = db.session.scalar(db.select(User).where(User.username == form.username.data))
             if existing_user:
                 flash("That username is already taken. Please choose another.", "warning")
-                return render_template("settings.html", form=form)
+                return render_template("settings.html", form=form, delete_form=delete_form)
         
         with safe_commit():
             current_user.username = form.username.data
@@ -1147,24 +1265,100 @@ def settings():
         form.notify_on_message.data = current_user.notify_on_message
         form.allow_dms.data = current_user.allow_dms 
         
-    return render_template("settings.html", form=form)
+    return render_template("settings.html", form=form, delete_form=delete_form)
 
+# @app.route("/")
+# def get_all_posts():
+#     posts = db.session.scalars(db.select(BlogPost).order_by(BlogPost.date.desc())).all()
+#     return render_template("index.html", all_posts=posts)
+
+# --- UPDATED HOME ROUTE (INITIAL LOAD) ---
 @app.route("/")
 def get_all_posts():
-    posts = db.session.scalars(db.select(BlogPost).order_by(BlogPost.date.desc())).all()
-    return render_template("index.html", all_posts=posts)
+    # Get page from URL (default 1), load 9 posts per batch
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    
+    # Efficient Pagination Query
+    stmt = db.select(BlogPost).order_by(BlogPost.date.desc())
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    # Render index.html with the first batch of items
+    return render_template("index.html", 
+                           all_posts=pagination.items, 
+                           has_next=pagination.has_next,
+                           next_page=pagination.next_num)
 
+# --- NEW API ROUTE (INFINITE SCROLL) ---
+@app.route("/posts/load")
+def load_posts():
+    """
+    API endpoint called by JavaScript to fetch the next page of posts.
+    Returns HTML fragment (the cards) to be appended to the grid.
+    """
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    
+    stmt = db.select(BlogPost).order_by(BlogPost.date.desc())
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    # Return JUST the list of cards
+    return render_template("_post_list.html", posts=pagination.items)
+
+# @app.route("/user/<string:username>")
+# def user_profile(username):
+#     user = User.query.filter_by(username=username).first_or_404()
+#     posts = BlogPost.query.filter_by(author=user).order_by(BlogPost.date.desc()).all()
+    
+#     can_message = False
+#     if current_user.is_authenticated and current_user.id != user.id:
+#         if user.allow_dms or current_user.role == "admin":
+#             can_message = True
+            
+#     return render_template("profile.html", user=user, posts=posts, can_message=can_message)
+
+# --- UPDATED PROFILE ROUTE (Page 1) ---
 @app.route("/user/<string:username>")
 def user_profile(username):
-    user = User.query.filter_by(username=username).first_or_404()
-    posts = BlogPost.query.filter_by(author=user).order_by(BlogPost.date.desc()).all()
+    user = db.session.scalar(db.select(User).where(User.username == username))
+    if not user:
+        abort(404)
+    
+    # Pagination Logic
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    
+    # Filter by Author
+    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id).order_by(BlogPost.date.desc())
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     
     can_message = False
     if current_user.is_authenticated and current_user.id != user.id:
         if user.allow_dms or current_user.role == "admin":
             can_message = True
             
-    return render_template("profile.html", user=user, posts=posts, can_message=can_message)
+    return render_template("profile.html", 
+                           user=user, 
+                           posts=pagination.items, 
+                           has_next=pagination.has_next, 
+                           next_page=pagination.next_num,
+                           can_message=can_message)
+
+# --- NEW API ROUTE (Profile Infinite Scroll) ---
+@app.route("/user/<string:username>/load")
+def load_user_posts(username):
+    user = db.session.scalar(db.select(User).where(User.username == username))
+    if not user:
+        return "", 404
+        
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    
+    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id).order_by(BlogPost.date.desc())
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    # Reuse the same partial template!
+    return render_template("_post_list.html", posts=pagination.items)
 
 @app.route("/my-posts")
 @login_required
@@ -1178,7 +1372,11 @@ def get_user_posts():
 
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
-    post = db.get_or_404(BlogPost, post_id)
+    post = db.session.get(BlogPost, post_id)
+    
+    if not post:
+        flash("That post has been deleted or does not exist.", "info")
+        return redirect(url_for("get_all_posts"))
     
     # --- SMART READ: Mark Activity as Read ---
     # If a user views this post, clear any pending notifications about it.
@@ -1248,7 +1446,9 @@ def show_post(post_id):
                     f"{current_user.name}: {new_comment.text[:60]}...", 
                     post_url,
                     "comment",
-                    post.id
+                    related_post_id=post.id,
+                    related_comment_id=new_comment.id,
+                    icon_url=get_gravatar_url(current_user.email)
                 )
                 
             # 2. Notify Parent Commenter (Reply Logic)
@@ -1266,7 +1466,9 @@ def show_post(post_id):
                             f"{new_comment.text[:60]}...",
                             post_url,
                             "comment",
-                            post.id
+                            related_post_id=post.id,
+                            related_comment_id=new_comment.id,
+                            icon_url=get_gravatar_url(current_user.email)
                         )
 
         except Exception as e:
@@ -1287,10 +1489,23 @@ def show_post(post_id):
     if target_comment_id:
         target_comment = db.session.get(Comment, target_comment_id)
         # Verify comment belongs to this post
-        if target_comment and target_comment.post_id == post.id:
+        # --- 1. EDGE CASE: Comment Deleted ---
+        if not target_comment:
+            # This is the Flash Message you asked about
+            flash("The comment you are looking for has been deleted.", "warning")
+            
+        # --- 2. EDGE CASE: Wrong Post (Security) ---
+        elif target_comment.post_id != post.id:
+            flash("That comment belongs to a different post.", "warning")
+            
+        # --- 3. HAPPY PATH: Comment Exists ---
+        else:
             # Find the root parent (pagination is based on top-level comments)
             root_comment = target_comment
             while root_comment.parent_id is not None:
+                # Defensive check for orphan replies
+                if root_comment.parent is None:
+                    break 
                 root_comment = root_comment.parent
             
             # Calculate how many comments are NEWER than this one
@@ -1388,7 +1603,9 @@ def add_new_post():
                             f"{current_user.name} published a new story.", # Plain text for Web Push
                             post_url,
                             "post",
-                            post.id
+                            related_post_id=post.id,
+                            icon_url=get_gravatar_url(current_user.email),
+                            image_url=post.img_url
                         )
         except Exception as e:
             # Log the error internally but allow the request to succeed
@@ -1456,7 +1673,9 @@ def edit_post(post_id):
                             f"{current_user.name} updated this post.",
                             post_url,
                             "edit",
-                            post.id
+                            related_post_id=post.id,
+                            icon_url=get_gravatar_url(current_user.email),
+                            image_url=post.img_url
                         )
         except Exception as e:
             logger.error(f"Notification Error for post {post.id}: {e}")
@@ -1676,18 +1895,21 @@ def chat(user_id):
         return redirect(url_for('user_profile', username=current_user.username))
 
     can_message = recipient.allow_dms or current_user.role == "admin" or recipient.role == "admin"
-    if not can_message:
-        flash("This user does not accept private messages.", "warning")
-        return redirect(url_for('user_profile', username=recipient.username))
+    # if not can_message:
+    #     flash("This user does not accept private messages.", "warning")
+    #     return redirect(url_for('user_profile', username=recipient.username))
 
     form = MessageForm()
     
     # FALLBACK: Handle Message Sending via HTTP (No JS)
     if form.validate_on_submit():
-        with safe_commit():
-            msg = Message(sender=current_user, recipient=recipient, body=form.message.data)
-            db.session.add(msg)
-        return redirect(url_for('chat', user_id=user_id))
+        if not can_message:
+            flash("This user does not accept private messages.", "danger")
+        else:
+            with safe_commit():
+                msg = Message(sender=current_user, recipient=recipient, body=form.message.data)
+                db.session.add(msg)
+            return redirect(url_for('chat', user_id=user_id))
     
     # Load History & Mark Read
     history_stmt = db.select(Message).where(
@@ -1713,7 +1935,7 @@ def chat(user_id):
             'timestamp': datetime.now(timezone.utc).isoformat()
         }, room=f"user_{user_id}")
 
-    return render_template('chat.html', form=form, recipient=recipient, history=history)
+    return render_template('chat.html', form=form, recipient=recipient, history=history, can_message=can_message)
 
 @app.route('/message/delete/<int:message_id>', methods=['POST'])
 @login_required
@@ -1727,45 +1949,146 @@ def delete_message(message_id):
             flash("You cannot delete this message.", "danger")
     return redirect(request.referrer or url_for('inbox'))
 
+# main.py (Update/Add these routes)
+
+# 1. USER SELF-DELETE (Does NOT Ban email)
 @app.route("/delete-account", methods=["POST"])
 @login_required
 def delete_account():
-    try:
-        # ANONYMIZATION LOGIC (The Ghost User Fix)
-        # We don't delete the row (to save messages), we scrub the data.
-        
-        # 1. Scramble Personal Info
-        random_suffix = uuid.uuid4().hex[:8]
-        current_user.name = "Deleted User"
-        current_user.username = f"ghost_{random_suffix}"
-        current_user.email = f"deleted_{uuid.uuid4().hex}@example.com" # Frees up the original email
-        current_user.about_me = None
-        current_user.password = generate_password_hash(uuid.uuid4().hex) # Impossible to login
-        current_user.email_verified = False
-        
-        # 2. Delete Content (Optional: Delete posts/comments but keep chats)
-        # Assuming you want to delete their public blog posts:
-        for post in current_user.posts:
-            db.session.delete(post)
-            
-        # 3. Handle Comments (Optional: Delete or Anonymize)
-        # If you want comments to stay as "Deleted User", do nothing.
-        # If you want to delete them:
-        # for comment in current_user.comments:
-        #     db.session.delete(comment)
+    form = DeleteAccountForm()
+    
+    # 1. SECURITY: Validate Form & Password
+    if form.validate_on_submit():
+        if not check_password_hash(current_user.password, form.password.data):
+            flash("Incorrect password. Account deletion canceled.", "danger")
+            return redirect(url_for('settings'))
 
-        with safe_commit():
-            db.session.add(current_user) # Save the anonymized user
-            
-        logout_user()
-        session.clear()
-        flash("Your account has been deleted. We are sad to see you go.", "success")
-        return redirect(url_for('get_all_posts'))
+        try:
+            original_email = current_user.email
+            original_name = current_user.name
 
-    except Exception as e:
-        logger.error(f"Account deletion failed: {e}")
-        flash("An error occurred while deleting your account.", "danger")
-        return redirect(url_for('settings'))
+            # 2. LOGGING: Create the permanent record
+            deletion_log = DeletedAccountLog(
+                original_email=original_email,
+                original_username=current_user.username,
+                user_id=current_user.id,
+                reason=form.reason.data,
+                ip_address=get_remote_address() # Captures IP for security audit
+            )
+            
+            with safe_commit():
+                db.session.add(deletion_log)
+                
+                # 3. GHOST PROTOCOL: Anonymize the live user data
+                anonymize_user_data(current_user)
+            
+            # 4. NOTIFICATION: Send Goodbye Email (Async)
+            # Do this BEFORE logging out, but use the `original_email` variable
+            try:
+                home_url = url_for('get_all_posts', _external=True)
+                support_url = url_for('contact', _external=True)
+
+                html_body = render_template("email/goodbye.html", name=original_name, home_url=home_url, support_url=support_url)
+                socketio.start_background_task(
+                    send_email, 
+                    original_email, 
+                    "Your account has been deleted", 
+                    html_body
+                )
+            except Exception as e:
+                logger.error(f"Failed to send goodbye email: {e}")
+
+            logout_user()
+            session.clear()
+            flash("Your account has been successfully deleted.", "success")
+            return redirect(url_for('get_all_posts'))
+
+        except Exception as e:
+            logger.error(f"Account deletion failed: {e}")
+            flash("An error occurred while deleting your account.", "danger")
+            return redirect(url_for('settings'))
+            
+    # If form validation fails (e.g. empty password field submitted via tool)
+    flash("Please confirm your password to delete your account.", "warning")
+    return redirect(url_for('settings'))
+
+
+# @app.route("/delete-account", methods=["POST"])
+# @login_required
+# def delete_account():
+#     try:
+#         with safe_commit():
+#             anonymize_user_data(current_user)
+#             # We do NOT add to BannedUser here, allowing them to return later if they wish.
+            
+#         logout_user()
+#         session.clear()
+#         flash("Your account has been deleted. We are sad to see you go.", "success")
+#         return redirect(url_for('get_all_posts'))
+
+#     except Exception as e:
+#         logger.error(f"Account deletion failed: {e}")
+#         flash("An error occurred while deleting your account.", "danger")
+#         return redirect(url_for('settings'))
+
+
+# 2. ADMIN FORCE-DELETE (BANS email)
+@app.route("/admin/delete-user/<int:user_id>", methods=["GET", "POST"])
+@admin_only
+def admin_delete_user(user_id):
+    user_to_delete = db.get_or_404(User, user_id)
+    
+    # Safety: Admin cannot delete themselves or other admins via this route
+    if user_to_delete.role == "admin":
+        flash("You cannot ban an administrator.", "warning")
+        return redirect(url_for('user_profile', username=user_to_delete.username))
+ 
+    form = AdminDeleteUserForm()
+
+    if form.validate_on_submit():
+        try:
+            original_email = user_to_delete.email
+            reason = form.reason.data
+            
+            # A. Send Termination Email (Before anonymizing so we have the email)
+            support_url = url_for('contact', _external=True)
+            guidelines_url = url_for('legal', page_name='guidelines', _external=True)
+            
+            html_body = render_template(
+                "email/account_terminated.html",
+                user=user_to_delete,
+                reason=reason,
+                support_url=support_url,
+                guidelines_url=guidelines_url
+            )
+            
+            socketio.start_background_task(
+                send_email, 
+                original_email, 
+                "Important: Your account has been terminated", 
+                html_body
+            )
+
+            with safe_commit():
+                # B. Add to Ban List
+                ban_entry = BannedUser(
+                    email=original_email,
+                    reason=reason,
+                    banned_by=current_user.username
+                )
+                db.session.add(ban_entry)
+                
+                # C. Anonymize User Data (Ghost Protocol)
+                anonymize_user_data(user_to_delete)
+            
+            flash(f"User {original_email} has been banned and data anonymized.", "success")
+            return redirect(url_for('get_all_posts'))
+            
+        except Exception as e:
+            logger.error(f"Failed to ban user: {e}")
+            flash("Error banning user.", "danger")
+
+    return render_template("admin_delete_user.html", form=form, user=user_to_delete)
 
 # -------------------------------------------------------------------
 # 13. REAL-TIME SOCKET EVENTS
@@ -1787,6 +2110,12 @@ def handle_socket_message(data):
     if not body: return
 
     recipient = db.session.get(User, recipient_id)
+
+    # --- NEW SECURITY CHECK ---
+    can_message = recipient.allow_dms or current_user.role == "admin" or recipient.role == "admin"
+    if not can_message:
+        return # Silently fail or emit an error event
+
     if recipient:
         try:
             # 1. Database Save
@@ -1820,7 +2149,7 @@ def handle_socket_message(data):
                 msg.body,
                 chat_url,
                 "chat",
-                None
+                icon_url=get_gravatar_url(current_user.email)
             )
         except Exception as e:
             logger.error(f"Socket message failed: {e}")

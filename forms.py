@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, EmailField, TextAreaField, BooleanField, HiddenField
+from wtforms import StringField, PasswordField, SubmitField, EmailField, TextAreaField, BooleanField, HiddenField, SelectField
 from wtforms.validators import DataRequired, URL, Email, Length, EqualTo, Regexp
 from flask_ckeditor import CKEditorField
 from utils.validators import validate_strong_password
@@ -114,6 +114,32 @@ class DeleteReasonForm(FlaskForm):
 class WarnUserForm(FlaskForm):
     message = TextAreaField("Warning Message", validators=[DataRequired(), Length(max=2000, message="Warning message cannot exceed 2000 characters.")])
     submit = SubmitField("Send Warning Email")
+
+class DeleteAccountForm(FlaskForm):
+    password = PasswordField(
+        "Confirm Password", 
+        validators=[DataRequired()],
+        render_kw={"placeholder": "Enter your password to confirm"}
+    )
+    reason = SelectField(
+        "Why are you leaving?",
+        choices=[
+            ('privacy', 'Privacy concerns'),
+            ('usability', 'Too difficult to use'),
+            ('content', 'Not enough content'),
+            ('fresh_start', 'Want a fresh start'),
+            ('other', 'Other')
+        ],
+        validators=[DataRequired()]
+    )
+    submit = SubmitField("Permanently Delete Account")
+
+class AdminDeleteUserForm(FlaskForm):
+    reason = TextAreaField(
+        "Reason for termination", 
+        validators=[DataRequired(), Length(max=1000, message="Reason cannot exceed 1000 characters.")]
+    )
+    submit = SubmitField("Permanently Ban User")
 
 class MessageForm(FlaskForm):
     message = TextAreaField(

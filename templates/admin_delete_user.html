@@ -7,8 +7,10 @@
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
         <div class="site-heading">
-          <h1>Moderation</h1>
-          <span class="subheading">Warn Author: {{ post.author.name }}</span>
+          <h1>Ban User</h1>
+          <span class="subheading text-danger fw-bold"
+            >Terminating account: @{{ user.username }}</span
+          >
         </div>
       </div>
     </div>
@@ -21,7 +23,7 @@
       {% with messages = get_flashed_messages(with_categories=true) %} {% if
       messages %} {% for category, message in messages %}
       <div
-        class="alert alert-{{ category }} alert-dismissible fade show"
+        class="alert alert-{{ category }} alert-dismissible fade show shadow-sm"
         role="alert"
       >
         {{ message }}
@@ -33,27 +35,57 @@
       </div>
       {% endfor %} {% endif %} {% endwith %}
 
-      <p>
-        Sending a warning regarding the post: <strong>{{ post.title }}</strong>.
+      <div class="alert alert-danger shadow-sm mb-4">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Warning:</strong> This action cannot be undone.
+      </div>
+
+      <p class="lead mb-3">
+        You are about to permanently ban <strong>{{ user.name }}</strong> ({{
+        user.email }}).
       </p>
+
+      <ul class="text-muted mb-4 small">
+        <li>
+          <i class="bi bi-dot"></i> Their email address will be added to the
+          <strong>Blacklist</strong>.
+        </li>
+        <li>
+          <i class="bi bi-dot"></i> Their personal data will be
+          <strong>anonymized</strong> (Ghost Protocol).
+        </li>
+        <li>
+          <i class="bi bi-dot"></i> All blog posts will be
+          <strong>deleted</strong>.
+        </li>
+        <li>
+          <i class="bi bi-dot"></i> Chat history and comments will be preserved
+          but attributed to "Deleted User".
+        </li>
+      </ul>
 
       <form method="POST" novalidate>
         {{ form.hidden_tag() }}
 
         <div class="mb-3">
-          {{ form.message.label(class="form-label") }} {{
-          form.message(class="form-control", rows="5", placeholder="Explain the
-          violation or issue...") }} {% for error in form.message.errors %}
+          {{ form.reason.label(class="form-label fw-bold") }} {{
+          form.reason(class="form-control", rows="5", placeholder="Explain the
+          violation. This will be emailed to the user.") }} {% for error in
+          form.reason.errors %}
           <div class="text-danger mt-1">
             <small>{{ error }}</small>
           </div>
           {% endfor %}
         </div>
 
-        {{ form.submit(class="btn btn-warning") }}
-        <a href="{{ url_for('get_all_posts') }}" class="btn btn-secondary ms-2"
-          >Cancel</a
-        >
+        <div class="d-grid gap-2 d-md-flex mt-4">
+          {{ form.submit(class="btn btn-danger px-4 fw-bold") }}
+          <a
+            href="{{ url_for('user_profile', username=user.username) }}"
+            class="btn btn-secondary px-4"
+            >Cancel</a
+          >
+        </div>
       </form>
     </div>
   </div>

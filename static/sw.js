@@ -25,9 +25,25 @@ self.addEventListener('push', function(event) {
 
     const options = {
       body: data.body,
-      icon: '/static/assets/favicon.ico', 
-      badge: '/static/assets/favicon.ico',
-      data: { url: data.url } // Persist URL for click event
+      icon: data.icon,   // User Avatar (Modern)
+      image: data.image, // Post Cover Image (Android/Desktop Rich Media)
+      badge: data.badge, // Small Status Bar Icon
+      tag: data.tag,     // Prevents notification spam (updates existing)
+      renotify: true,    // Vibrate/Sound even if replacing an old tag
+      timestamp: data.timestamp, // Server-side timestamp for accuracy
+      data: { url: data.url },   // Persist URL for click event
+      
+      // MODERN ACTIONS
+      actions: [
+        {
+          action: 'view',
+          title: '👀 View',
+        },
+        {
+          action: 'close',
+          title: '✖ Close',
+        }
+      ]
     };
 
     event.waitUntil(
@@ -62,7 +78,12 @@ self.addEventListener('push', function(event) {
 
 // 3. CLICK EVENT
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+  event.notification.close(); // Close the notification immediately
+  
+  // Handle Button Clicks (Modern Action)
+  if (event.action === 'close') {
+    return;
+  }
   
   // Clean logic to focus existing tab or open new one
   event.waitUntil(
