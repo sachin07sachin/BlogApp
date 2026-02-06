@@ -102,7 +102,13 @@
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
           
           {% if not current_user.is_authenticated %}
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('login_get') }}">Login</a></li>
+          <li class="nav-item">
+            <a class="nav-link px-lg-3 py-3 py-lg-4" 
+               href="{{ url_for('login_get') }}" 
+               onclick="event.preventDefault(); window.location.href = '{{ url_for('login_get') }}?next=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);">
+               Login
+            </a>
+        </li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Support</a></li>
           {% else %}
@@ -111,16 +117,25 @@
                 Profile
             </a>
           </li>
-          <li class="nav-item position-relative">
-              <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('inbox') }}">
-                  Messages
-                  {% if unread_count > 0 %}
-                      <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="top: 25px !important; font-size: 0.6rem;">
+          <li class="nav-item">
+            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('inbox') }}">
+                
+                {# 1. Wrapper Span: Creates a tight box around the word "Messages" #}
+                <span class="d-inline-block position-relative">
+                    Messages
+                    
+                    {% if unread_count > 0 %}
+                      {# 2. The Badge: Now positioned relative to the word, not the button #}
+                      {# Removed 'style="top: 25px"' because it is no longer needed #}
+                      <span class="position-absolute top-0 start-100 translate-middle-y badge rounded-pill bg-danger" 
+                            style="font-size: 0.6rem; margin-top: -2px;">
                           {{ unread_count }}
                           <span class="visually-hidden">unread messages</span>
                       </span>
-                  {% endif %}
-              </a>
+                    {% endif %}
+                </span>
+
+            </a>
           </li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>

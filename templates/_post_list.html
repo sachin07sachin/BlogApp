@@ -37,7 +37,7 @@
         <div class="d-flex align-items-center">
           <img
             src="{{ post.author.email | gravatar }}"
-            class="rounded-circle me-3"
+            class="rounded-circle me-1"
             width="40"
             height="40"
             alt="Author"
@@ -61,33 +61,46 @@
           </div>
         </div>
 
-        {% if current_user.is_authenticated %}
-        <div class="d-flex gap-2">
-          {% if current_user.role == "admin" and current_user.id !=
-          post.author.id %}
-          <a
-            href="{{ url_for('warn_post_author', post_id=post.id) }}"
-            class="btn btn-sm btn-warning rounded-pill px-2 py-0"
-            style="font-size: 0.75rem; line-height: 20px"
-          >
-            Warn
-          </a>
-          {% endif %} {% if current_user.id == post.author.id or
-          current_user.role == "admin" %}
+        <div class="d-flex align-items-center gap-3">
+          
           <button
-            type="button"
-            class="btn btn-sm btn-danger rounded-pill px-2 py-0"
-            style="font-size: 0.75rem; line-height: 20px"
-            data-bs-toggle="modal"
-            data-bs-target="#deletePostModal"
+            class="like-btn d-flex align-items-center gap-1"
             data-post-id="{{ post.id }}"
-            data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+            {% if not current_user.is_authenticated %}
+              onclick="window.location.href='{{ url_for('login_get', next=request.full_path ~ '#post-' ~ post.id) }}'; return false;"
+            {% endif %}
           >
-            Delete
+            <i class="bi {% if post.is_liked_by(current_user) %}bi-heart-fill{% else %}bi-heart{% endif %} fs-5 heart-icon"></i>
+            <span class="fw-bold small like-count">{{ post.liked_by.count() }}</span>
           </button>
+
+          {% if current_user.is_authenticated %}
+            {% if current_user.role == "admin" and current_user.id != post.author.id %}
+            <a
+              href="{{ url_for('warn_post_author', post_id=post.id) }}"
+              class="text-warning action-btn"
+              title="Warn Author"
+              style="text-decoration: none;"
+            >
+              <i class="bi bi-exclamation-triangle-fill"></i>
+            </a>
+            {% endif %} 
+            
+            {% if current_user.id == post.author.id or current_user.role == "admin" %}
+            <button
+              type="button"
+              class="btn p-0 border-0 text-danger action-btn"
+              data-bs-toggle="modal"
+              data-bs-target="#deletePostModal"
+              data-post-id="{{ post.id }}"
+              data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+              title="Delete Post"
+            >
+              <i class="bi bi-trash-fill"></i>
+            </button>
+            {% endif %}
           {% endif %}
         </div>
-        {% endif %}
       </div>
     </div>
   </div>

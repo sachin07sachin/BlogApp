@@ -1,198 +1,338 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
     <meta name="description" content="Blog App" />
     <meta name="author" content="Blog App" />
     <title>{% block title %}Blog App{% endblock %}</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    {{ bootstrap.load_css() }}
-    
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/favicon.ico') }}" />
-    
-    <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
-    
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
 
-    <link href="https://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic" rel="stylesheet" type="text/css" />
-    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css" />
-    
-    <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet" />
-    
+    {{ bootstrap.load_css() }}
+
+    <link
+      rel="icon"
+      href="{{ url_for('static', filename='assets/favicon.ico') }}"
+      sizes="48x48"
+    />
+
+    <link
+      rel="apple-touch-icon"
+      href="{{ url_for('static', filename='assets/logo.png') }}"
+    />
+
+    <script
+      src="https://use.fontawesome.com/releases/v6.3.0/js/all.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+
+    <link
+      href="https://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic"
+      rel="stylesheet"
+      type="text/css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800"
+      rel="stylesheet"
+      type="text/css"
+    />
+
+    <link
+      href="{{ url_for('static', filename='css/styles.css') }}"
+      rel="stylesheet"
+    />
+
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     {% block styles %}{% endblock %}
-</head>
+  </head>
 
-<body class="d-flex flex-column min-vh-100">
-
-    {% include "header.html" %}
-
-    {% block header %}{% endblock %}
-
-    {% block content %}{% endblock %}
-
-    {% include "footer.html" %}
+  <body class="d-flex flex-column min-vh-100">
+    {% include "header.html" %} {% block header %}{% endblock %} {% block
+    content %}{% endblock %} {% include "footer.html" %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
-    
+
     <script>
-        // Define a reusable function attached to the window object
-        // This allows other scripts (like post.html's infinite scroll) to call it manually.
-        window.localizeTimes = function(scopeElement = document) {
-            console.log("Running Time Localization on scope:", scopeElement);
+      // Define a reusable function attached to the window object
+      // This allows other scripts (like post.html's infinite scroll) to call it manually.
+      window.localizeTimes = function (scopeElement = document) {
+        console.log("Running Time Localization on scope:", scopeElement);
 
-            const timeOptions = { 
-                hour: 'numeric', 
-                minute: '2-digit', 
-                hour12: true 
-            };
-
-            // 1. Convert simple Times (Chat)
-            const timeElements = scopeElement.querySelectorAll('.local-time');
-            timeElements.forEach(function(elem) {
-                // Avoid re-converting if already done (optimization)
-                if (elem.dataset.localized) return;
-                
-                const utcStr = elem.getAttribute('data-utc');
-                if (utcStr) {
-                    const date = new Date(utcStr);
-                    elem.textContent = date.toLocaleTimeString([], timeOptions).toUpperCase();
-                    elem.dataset.localized = "true"; // Mark as done
-                }
-            });
-
-            // 2. Convert Smart Dates (Posts & Comments)
-            const dateElements = scopeElement.querySelectorAll('.smart-date');
-            console.log("Found smart-date elements in scope:", dateElements.length); 
-
-            dateElements.forEach(function(elem) {
-                if (elem.dataset.localized) return;
-
-                const utcStr = elem.getAttribute('data-utc');
-                const style = elem.getAttribute('data-style');
-                
-                if (utcStr) {
-                    const msgDate = new Date(utcStr);
-                    const now = new Date();
-                    const isToday = msgDate.toDateString() === now.toDateString();
-                    
-                    // CASE A: Explicit "Full" Style (Used for Home Page / Blog Posts)
-                    if (style === 'full') {
-                        // FIX: Added Time to format so changes are visible locally
-                        elem.textContent = msgDate.toLocaleDateString([], { 
-                            month: 'long', 
-                            day: 'numeric', 
-                            year: 'numeric' 
-                        }); 
-                        
-                        console.log("Converted:", utcStr, "->", elem.textContent);
-                    } 
-                    // CASE B: Default Style (Used for Inbox / Comments)
-                    else {
-                        if (isToday) {
-                            // Show Time for today
-                            elem.textContent = msgDate.toLocaleTimeString([], timeOptions).toUpperCase();
-                        } else {
-                            // Show Short Date for history
-                            elem.textContent = msgDate.toLocaleDateString([], { 
-                                month: 'short', 
-                                day: 'numeric', 
-                                year: 'numeric' 
-                            });
-                        }
-                    }
-                    elem.dataset.localized = "true"; // Mark as done
-                }
-            });
+        const timeOptions = {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
         };
 
-        // Run automatically on initial page load
-        document.addEventListener("DOMContentLoaded", function() {
-            window.localizeTimes(document);
+        // 1. Convert simple Times (Chat)
+        const timeElements = scopeElement.querySelectorAll(".local-time");
+        timeElements.forEach(function (elem) {
+          // Avoid re-converting if already done (optimization)
+          if (elem.dataset.localized) return;
+
+          const utcStr = elem.getAttribute("data-utc");
+          if (utcStr) {
+            const date = new Date(utcStr);
+            elem.textContent = date
+              .toLocaleTimeString([], timeOptions)
+              .toUpperCase();
+            elem.dataset.localized = "true"; // Mark as done
+          }
         });
+
+        // 2. Convert Smart Dates (Posts & Comments)
+        const dateElements = scopeElement.querySelectorAll(".smart-date");
+        console.log("Found smart-date elements in scope:", dateElements.length);
+
+        dateElements.forEach(function (elem) {
+          if (elem.dataset.localized) return;
+
+          const utcStr = elem.getAttribute("data-utc");
+          const style = elem.getAttribute("data-style");
+
+          if (utcStr) {
+            const msgDate = new Date(utcStr);
+            const now = new Date();
+            const isToday = msgDate.toDateString() === now.toDateString();
+
+            // CASE A: Explicit "Full" Style (Used for Home Page / Blog Posts)
+            if (style === "full") {
+              // FIX: Added Time to format so changes are visible locally
+              elem.textContent = msgDate.toLocaleDateString([], {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+
+              console.log("Converted:", utcStr, "->", elem.textContent);
+            }
+            // CASE B: Default Style (Used for Inbox / Comments)
+            else {
+              if (isToday) {
+                // Show Time for today
+                elem.textContent = msgDate
+                  .toLocaleTimeString([], timeOptions)
+                  .toUpperCase();
+              } else {
+                // Show Short Date for history
+                elem.textContent = msgDate.toLocaleDateString([], {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+              }
+            }
+            elem.dataset.localized = "true"; // Mark as done
+          }
+        });
+      };
+
+      // Run automatically on initial page load
+      document.addEventListener("DOMContentLoaded", function () {
+        window.localizeTimes(document);
+      });
     </script>
 
     <script>
-        // 1. Register Service Worker & Wait for Ready (Fixes AbortError)
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register("/sw.js");
-          
-          // We wait for the 'ready' promise to resolve before trying to subscribe.
-          // This ensures the SW is active and can handle the PushManager request.
-          navigator.serviceWorker.ready.then(function(reg) {
-            console.log("Service Worker Registered and Ready!");
-            initializePush(reg);
-          });
-        }
-      
-        // 2. Ask for Permission & Subscribe
-        function initializePush(reg) {
-          // Check if we already have permission
-          if (Notification.permission === 'granted') {
-            subscribeUser(reg);
-          } else if (Notification.permission !== 'denied') {
-            // If not denied, ask for it (usually triggered by a button click in real apps)
-            Notification.requestPermission().then(function(permission) {
-              if (permission === 'granted') {
-                subscribeUser(reg);
-              }
+          // 1. Register Service Worker & Wait for Ready (Fixes AbortError)
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/sw.js");
+
+            // We wait for the 'ready' promise to resolve before trying to subscribe.
+            // This ensures the SW is active and can handle the PushManager request.
+            navigator.serviceWorker.ready.then(function (reg) {
+              console.log("Service Worker Registered and Ready!");
+              {% if current_user.is_authenticated %}
+                initializePush(reg);
+              {% endif %}
             });
           }
-        }
-      
-        function subscribeUser(reg) {
-          const applicationServerKey = urlB64ToUint8Array("BKInLZjDOIlN9ryyzcLu6OQAx56ylxSJVQJfxwQqaXlpv9r6Z9PZFI1sYRzoOVaeKqHqEfc4VyPYkqO__F49dk0");
-          
-          reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: applicationServerKey
-          })
-          .then(function(subscription) {
-            // Send the subscription to your Backend to save in DB
-            updateSubscriptionOnServer(subscription);
-          })
-          .catch(function(err) {
-            console.log('Failed to subscribe the user: ', err);
-          });
-        }
-      
-        function updateSubscriptionOnServer(subscription) {
+
+          // 2. Ask for Permission & Subscribe
+          function initializePush(reg) {
+            // Check if we already have permission
+            if (Notification.permission === "granted") {
+              subscribeUser(reg);
+            } else if (Notification.permission !== "denied") {
+              // If not denied, ask for it (usually triggered by a button click in real apps)
+              Notification.requestPermission().then(function (permission) {
+                if (permission === "granted") {
+                  subscribeUser(reg);
+                }
+              });
+            }
+          }
+
+          function subscribeUser(reg) {
+            const applicationServerKey = urlB64ToUint8Array(
+              "BKInLZjDOIlN9ryyzcLu6OQAx56ylxSJVQJfxwQqaXlpv9r6Z9PZFI1sYRzoOVaeKqHqEfc4VyPYkqO__F49dk0",
+            );
+
+            reg.pushManager
+              .subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey,
+              })
+              .then(function (subscription) {
+                // Send the subscription to your Backend to save in DB
+                updateSubscriptionOnServer(subscription);
+              })
+              .catch(function (err) {
+                console.log("Failed to subscribe the user: ", err);
+              });
+          }
+
+          function updateSubscriptionOnServer(subscription) {
             // SEND TO BACKEND
-            fetch("/subscribe", {
-              method: "POST",
-              body: JSON.stringify(subscription),
-              headers: {
-                "content-type": "application/json",
-                "X-CSRFToken": "{{ csrf_token() }}" // Authorization for Flask-WTF
+            // We use apiFetch so if the session expired while they were away,
+            // it handles the redirect gracefully instead of crashing.
+            apiFetch("/subscribe", {
+                method: "POST",
+                body: JSON.stringify(subscription),
+                // Note: apiFetch automatically adds Content-Type and CSRF headers
+            })
+              .then((response) => {
+                if (response.ok) console.log("Sent subscription to server!");
+                else console.log("Server rejected subscription");
+              })
+              .catch((err) => console.error("Error sending subscription:", err));
+          }
+
+          // Helper to convert VAPID key
+          function urlB64ToUint8Array(base64String) {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding)
+              .replace(/\-/g, "+")
+              .replace(/_/g, "/");
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+              outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+          }
+
+          // ==========================================
+        // 3. UNIVERSAL API FETCH (The Fix)
+        // ==========================================
+        /**
+         * Handles CSRF tokens and Session Expiration automatically.
+         * If session is dead, it redirects the browser to login.
+         */
+        async function apiFetch(url, options = {}) {
+            // 1. Default Headers (JSON + CSRF + AJAX Flag)
+            const headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json", // Critical: Tells server to send JSON error, not HTML
+                "X-CSRFToken": "{{ csrf_token() }}", // Flask-WTF token
+                "X-Requested-With": "XMLHttpRequest", // Critical: Marks this as AJAX for server
+                ...options.headers, // Merge custom headers
+            };
+
+            // Helper to build the perfect redirect URL with Hash support
+            const getLoginUrl = () => {
+                const currentPath = window.location.pathname + window.location.search + window.location.hash;
+                return "{{ url_for('login_get') }}?mode=session_expired&next=" + encodeURIComponent(currentPath);
+            };
+
+            try {
+                const response = await fetch(url, { ...options, headers });
+
+                // 2. DETECT SESSION EXPIRY (Server returned 401 JSON)
+                // This works with the updated handle_csrf_error in main.py
+                if (response.status === 401) {
+                  const clone = response.clone();
+                  try {
+                      const data = await clone.json();
+                      if (data.error === "session_expired") {
+                          console.warn("Session expired. Redirecting to login...");
+                          // FIX: Use Client-side logic to preserve the Hash (#)
+                          window.location.href = getLoginUrl();
+                          return null;
+                      }
+                  } catch (e) {
+                      // Not JSON, ignore
+                  }
               }
-            })
-            .then(response => {
-               if (response.ok) console.log("Sent subscription to server!");
-               else console.log("Server rejected subscription");
-            })
-            .catch(err => console.error("Error sending subscription:", err));
-          }
-      
-        // Helper to convert VAPID key
-        function urlB64ToUint8Array(base64String) {
-          const padding = '='.repeat((4 - base64String.length % 4) % 4);
-          const base64 = (base64String + padding)
-            .replace(/\-/g, '+')
-            .replace(/_/g, '/');
-          const rawData = window.atob(base64);
-          const outputArray = new Uint8Array(rawData.length);
-          for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
-          }
-          return outputArray;
+
+                // 3. DETECT HTML REDIRECT (Fallback)
+                // If the server forced a redirect to login page (status 200 but URL changed)
+                if (response.redirected && response.url.includes("/login")) {
+                  window.location.href = getLoginUrl();
+                  return null;
+              }
+
+                return response;
+            } catch (error) {
+                console.error("API Error:", error);
+                throw error;
+            }
         }
-      </script>
+
+        // ==========================================
+      // 5. UNIVERSAL LIKE BUTTON LOGIC (Event Delegation)
+      // ==========================================
+      // We attach the listener to the BODY, so it catches clicks
+      // on elements that haven't been created yet (Infinite Scroll).
+      document.body.addEventListener("click", function (e) {
+
+        // 1. Check if the clicked element (or its parent) is a .like-btn
+        const btn = e.target.closest(".like-btn");
+        if (!btn) return; // If not a like button, ignore the click
+
+        // 2. Prevent default behavior (stops page jumping)
+        e.preventDefault();
+
+        // 3. Get Data
+        const postId = btn.dataset.postId;
+        const icon = btn.querySelector(".heart-icon");
+        const countSpan = btn.querySelector(".like-count");
+
+
+
+        // 5. Network Request
+        apiFetch(`/like/${postId}`, {
+          method: "POST",
+        })
+          .then((response) => {
+            // If session expired, apiFetch returns null. Stop.
+            if (!response) return null;
+            if (!response.ok) throw new Error("Network response was not ok");
+            return response.json();
+          })
+          .then((data) => {
+            if (data) {
+              // Update the specific button that was clicked
+              if (countSpan) countSpan.textContent = data.likes_count;
+
+              if (icon) {
+                if (data.liked) {
+                  icon.classList.remove("bi-heart");
+                  icon.classList.add("bi-heart-fill");
+                } else {
+                  icon.classList.remove("bi-heart-fill");
+                  icon.classList.add("bi-heart");
+                }
+              }
+            }
+          })
+          .catch((error) => console.error("Error liking post:", error));
+      });
+    </script>
 
     {% block scripts %}{% endblock %}
-
-</body>
+  </body>
 </html>

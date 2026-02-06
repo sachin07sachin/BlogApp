@@ -71,16 +71,6 @@
                     {% endfor %}
                   </div>
 
-                  <div class="form-floating mb-3">
-                    {{ form.phone(class="form-control", placeholder="Phone") }}
-                    {{ form.phone.label() }}
-                    {% for error in form.phone.errors %}
-                    <div class="text-danger mt-1">
-                      <small>{{ error }}</small>
-                    </div>
-                    {% endfor %}
-                  </div>
-
                   <div class="form-floating mb-4">
                     {{ form.message(class="form-control", style="height: 12rem", placeholder="Message") }}
                     {{ form.message.label() }}

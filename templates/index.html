@@ -111,34 +111,11 @@
     animation: highlightCard 2s ease-out forwards;
   }
 
-  /* --- MODERN ACTION BUTTONS --- */
-  .btn-action {
-    font-size: 0.8rem;
-    font-weight: 600;
-    padding: 6px 16px;
-    border-radius: 8px;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
+  .action-btn {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
-
-  .btn-action-warn {
-    color: #b45309; /* Dark Amber */
-    background-color: #fffbeb;
-  }
-  .btn-action-warn:hover {
-    background-color: #fef3c7;
-    color: #92400e;
-  }
-
-  .btn-action-delete {
-    color: #b91c1c; /* Dark Red */
-    background-color: #fef2f2;
-    border: 1px solid #fee2e2;
-  }
-  .btn-action-delete:hover {
-    background-color: #fee2e2;
-    color: #991b1b;
-    border-color: #fecaca;
+  .action-btn:hover {
+    transform: scale(1.25); /* Pop up effect */
   }
 
   /* --- FAB STYLES (Restored: Blue Version) --- */
@@ -206,6 +183,48 @@
     .gmail-fab.shrunk {
       width: 50px;
     }
+  }
+
+  .like-btn {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    /* Removed the :active scale(0.9) to stop the 'shrink' glitch */
+  }
+
+  /* Unliked State: Dark Grey/Black Outline */
+  .heart-icon.bi-heart {
+    color: #262626; 
+    transition: transform 0.2s;
+  }
+  
+  /* Liked State: Instagram Red Fill */
+  .heart-icon.bi-heart-fill {
+    color: #ed4956;
+    /* Only pop when the Like is actually registered */
+    animation: heart-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  /* Hover Effect: Gentle scale */
+  .like-btn:hover .heart-icon {
+    transform: scale(1.1);
+    cursor: pointer;
+  }
+
+  /* The One and Only Pop Animation */
+  @keyframes heart-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.35); } /* Slightly bigger pop */
+    100% { transform: scale(1); } /* Return to normal (or hover state takes over) */
+  }
+
+  /* Count Text */
+  .like-count {
+    color: #262626;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-width: 15px; 
   }
 </style>
 
@@ -576,10 +595,14 @@
           const nextPage = sentinel.getAttribute("data-next-page");
 
           // Fetch the next page of posts
-          fetch(`/posts/load?page=${nextPage}`)
-            .then(response => response.text())
+          apiFetch(`/posts/load?page=${nextPage}`)
+            .then(response => {
+                // Safety: If redirected to login (session dead), response is null
+                if (!response) return null;
+                return response.text();
+            })
             .then(html => {
-              if (html.trim().length > 0) {
+              if (html && html.trim().length > 0) {
                 // Add new cards to the grid
                 container.insertAdjacentHTML('beforeend', html);
                 

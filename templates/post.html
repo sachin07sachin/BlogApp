@@ -325,10 +325,52 @@
   }
 
   /* FORCE INSTANT SCROLLING */
-    html, body {
-        scroll-behavior: auto !important;
-    }
+  html,
+  body {
+    scroll-behavior: auto !important;
+  }
 
+  .like-btn {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    /* Removed the :active scale(0.9) to stop the 'shrink' glitch */
+  }
+
+  /* Unliked State: Dark Grey/Black Outline */
+  .heart-icon.bi-heart {
+    color: #262626; 
+    transition: transform 0.2s;
+  }
+  
+  /* Liked State: Instagram Red Fill */
+  .heart-icon.bi-heart-fill {
+    color: #ed4956;
+    /* Only pop when the Like is actually registered */
+    animation: heart-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  /* Hover Effect: Gentle scale */
+  .like-btn:hover .heart-icon {
+    transform: scale(1.1);
+    cursor: pointer;
+  }
+
+  /* The One and Only Pop Animation */
+  @keyframes heart-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.35); } /* Slightly bigger pop */
+    100% { transform: scale(1); } /* Return to normal (or hover state takes over) */
+  }
+
+  /* Count Text */
+  .like-count {
+    color: #262626;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-width: 15px; 
+  }
 </style>
 <header class="masthead" style="background-image: url('{{ post.img_url }}')">
   <div class="container position-relative px-4 px-lg-5">
@@ -402,6 +444,31 @@
           <div id="post-content" class="article-content">
             {{ post.body | safe }}
           </div>
+        </div>
+
+        <div class="d-flex align-items-center mt-4 mb-4" id="like-section">
+          <button
+            class="like-btn d-flex align-items-center gap-2"
+            data-post-id="{{ post.id }}"
+            {% if not current_user.is_authenticated %}
+              disabled
+              style="cursor: default; opacity: 1;" 
+            {% endif %}
+          >
+            <i class="bi {% if post.is_liked_by(current_user) %}bi-heart-fill{% else %}bi-heart{% endif %} fs-3 heart-icon"></i>
+        
+            <span class="fw-bold fs-5 like-count">{{ post.liked_by.count() }}</span>
+          </button>
+        
+          {% if not current_user.is_authenticated %}
+            <span class="text-muted ms-2 small">
+              (<a 
+                 href="{{ url_for('login_get', next=request.full_path ~ '#like-section') }}" 
+                 class="text-decoration-none fw-bold" 
+                 style="color: #0095f6;"
+               >Log in</a> to like)
+            </span>
+          {% endif %}
         </div>
 
         <div class="action-bar">
@@ -528,8 +595,14 @@
             <a
               href="{{ url_for('login_get') }}"
               class="btn btn-primary px-4 rounded-pill shadow-sm"
-              >Log In to Comment</a
+              onclick="event.preventDefault(); 
+           const currentHash = window.location.hash;
+           // If the user is looking at a specific comment, keep it. Otherwise default to the form.
+           const targetAnchor = currentHash.startsWith('#comment-') ? currentHash : '#comment-form-section';
+           window.location.href = '{{ url_for('login_get') }}?next=' + encodeURIComponent(window.location.pathname + window.location.search + targetAnchor);"
             >
+              Log In to Comment
+            </a>
           </div>
         </div>
         {% endif %} {% else %}
@@ -552,7 +625,19 @@
         INFINITE SCROLL CONTAINER WITH FIXED HEIGHT #}
         <div class="comments-scroll-window" id="scroll-wrapper">
           <div class="comment-section" id="comments-container">
-            {% for comment in comments_pagination.items %} {{
+            {% if comments_pagination.has_prev %}
+            <div id="prev-comments-loader" class="text-center mb-3">
+              <button
+                onclick="loadPreviousComments(this)"
+                data-post-id="{{ post.id }}"
+                data-prev-page="{{ comments_pagination.prev_num }}"
+                class="btn btn-outline-primary btn-sm rounded-pill shadow-sm px-3"
+              >
+                <i class="bi bi-arrow-up-circle me-1"></i> Load Previous
+                Comments
+              </button>
+            </div>
+            {% endif %} {% for comment in comments_pagination.items %} {{
             render_comment(comment, 0, current_user, post) }} {% endfor %}
           </div>
 
@@ -714,6 +799,72 @@
     }
   }
 
+  // --- NEW: LOAD PREVIOUS COMMENTS LOGIC ---
+  function loadPreviousComments(btn) {
+    const postId = btn.getAttribute("data-post-id");
+    const prevPage = btn.getAttribute("data-prev-page");
+    const container = document.getElementById("comments-container");
+    const wrapper = document.getElementById("scroll-wrapper"); // The scrollable window
+    const loaderDiv = document.getElementById("prev-comments-loader");
+
+    // UI: Show loading state
+    btn.innerHTML =
+      '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+    btn.disabled = true;
+
+    // 1. Capture current scroll state BEFORE adding content
+    // This allows us to calculate exactly how much content was added
+    const oldHeight = container.scrollHeight;
+    const oldScrollTop = wrapper.scrollTop;
+
+    // 2. Fetch Previous Page
+    // We use your apiFetch so it handles session expiry automatically
+    apiFetch(`/post/${postId}/load-comments?page=${prevPage}`)
+      .then((response) => {
+        if (!response) return null; // Handle redirects
+        return response.text();
+      })
+      .then((html) => {
+        if (html && html.trim().length > 0) {
+          // 3. Insert HTML *AFTER* the loader button but *BEFORE* the top comment
+          loaderDiv.insertAdjacentHTML("afterend", html);
+
+          // 4. Update Timezones for new elements
+          if (window.localizeTimes) {
+            window.localizeTimes(container);
+          }
+
+          // 5. CRITICAL: Restore Scroll Position
+          // The browser tries to keep scrollTop the same, which makes the list "jump" up.
+          // We push the scroll down by exactly the amount of height we added.
+          const newHeight = container.scrollHeight;
+          const heightDifference = newHeight - oldHeight;
+          wrapper.scrollTop = oldScrollTop + heightDifference;
+
+          // 6. Update the Button for the NEXT previous page (e.g., Page 2 -> Page 1)
+          const nextPrevNum = parseInt(prevPage) - 1;
+
+          if (nextPrevNum >= 1) {
+            btn.setAttribute("data-prev-page", nextPrevNum);
+            btn.innerHTML =
+              '<i class="bi bi-arrow-up-circle me-1"></i> Load Previous Comments';
+            btn.disabled = false;
+          } else {
+            // No more previous pages (We reached Page 1)
+            loaderDiv.style.display = "none";
+          }
+        } else {
+          // Fallback if response was empty
+          loaderDiv.style.display = "none";
+        }
+      })
+      .catch((err) => {
+        console.error("Error loading previous comments:", err);
+        btn.innerHTML = "Error. Try again.";
+        btn.disabled = false;
+      });
+  }
+
   // --- Dynamic Scroll Detection & Animation ---
   document.addEventListener("DOMContentLoaded", function () {
     // 1. Modals Logic
@@ -794,7 +945,7 @@
         // B. Scroll Instantly (Simplified Logic)
         setTimeout(() => {
           targetElement.scrollIntoView({ behavior: "auto", block: "center" });
-          
+
           // Trigger Highlight Animation immediately
           targetElement.classList.add("highlight-anim");
 
@@ -835,10 +986,16 @@
             if (!nextPage || nextPage === "None") return;
             isLoading = true; // Lock
 
-            fetch(`/post/${postId}/load-comments?page=${nextPage}`)
-              .then((response) => response.text())
+            apiFetch(`/post/${postId}/load-comments?page=${nextPage}`)
+              .then((response) => {
+                // 1. If apiFetch handled a redirect/error, it returns null. Stop here.
+                if (!response) return null;
+                
+                // 2. If valid, get the HTML text
+                return response.text();
+              })
               .then((html) => {
-                if (html.trim().length > 0) {
+                if (html && html.trim().length > 0) {
                   container.insertAdjacentHTML("beforeend", html);
 
                   // --- FIX: Run Time Conversion on New Elements ---
@@ -887,6 +1044,8 @@
         img.classList.remove("img-loading");
       }
     });
+
+  
   });
 </script>
 {% endblock %}

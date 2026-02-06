@@ -1,134 +1,296 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="light dark">
-    <meta name="supported-color-schemes" content="light dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <title>Daily Digest</title>
     <style>
-        /* --- GLOBAL RESETS --- */
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
-        
-        /* --- LIGHT MODE (DEFAULT) --- */
-        body { background-color: #f4f4f7; color: #51545E; }
-        .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
-        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        
-        /* HEADER - Brand Blue */
-        .header { background-color: #0d6efd; padding: 30px; text-align: center; }
-        .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
-        
-        .content { padding: 40px; }
-        .footer { background-color: #f9f9f9; padding: 30px 20px; text-align: center; font-size: 12px; color: #989ea4; border-top: 1px solid #eaeaec; }
-        
-        /* --- LIST STYLES --- */
-        .section-title { font-size: 12px; font-weight: bold; text-transform: uppercase; color: #999; margin-bottom: 10px; letter-spacing: 1px; margin-top: 20px; }
-        
-        /* The List Container */
-        .list-group { border: 1px solid #eee; border-radius: 8px; overflow: hidden; margin-bottom: 20px; background-color: #fff; }
-        
-        /* Individual Items */
-        .list-item { padding: 15px 20px; border-bottom: 1px solid #eee; display: block; text-decoration: none; color: #333; transition: background 0.2s; }
-        .list-item:last-child { border-bottom: none; }
-        .list-item:hover { background-color: #f8f9fa; }
-        
-        .icon { margin-right: 12px; font-size: 18px; vertical-align: middle; display: inline-block; }
-        .item-text { vertical-align: middle; font-size: 15px; }
+      /* --- GLOBAL RESETS --- */
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.6;
+      }
 
-        /* Button - Brand Blue */
-        .btn { display: inline-block; background-color: #0d6efd; color: #ffffff !important; text-decoration: none; padding: 12px 30px; border-radius: 50px; font-weight: bold; font-size: 15px; margin-top: 20px; }
-        .btn:hover { background-color: #0b5ed7; }
+      /* --- LIGHT MODE (DEFAULT) --- */
+      body {
+        background-color: #f4f4f7;
+        color: #51545e;
+      }
+      .wrapper {
+        width: 100%;
+        table-layout: fixed;
+        background-color: #f4f4f7;
+        padding-bottom: 40px;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      }
 
-        /* --- DARK MODE OVERRIDES --- */
-        @media (prefers-color-scheme: dark) {
-            body, .wrapper { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
-            .container { background-color: #2d2d2d !important; box-shadow: none !important; }
-            .content { color: #e0e0e0 !important; }
-            .header h1 { color: #ffffff !important; }
-            .footer { background-color: #252525 !important; border-top: 1px solid #333 !important; color: #888 !important; }
-            
-            .list-group { background-color: #333 !important; border: 1px solid #444 !important; }
-            .list-item { border-bottom: 1px solid #444 !important; color: #e0e0e0 !important; }
-            .list-item:hover { background-color: #3a3a3a !important; }
-            .section-title { color: #888 !important; }
+      /* HEADER - Brand Blue */
+      .header {
+        background-color: #0d6efd;
+        padding: 30px;
+        text-align: center;
+      }
+      .header h1 {
+        color: #ffffff;
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      .content {
+        padding: 40px;
+      }
+      .footer {
+        background-color: #f9f9f9;
+        padding: 30px 20px;
+        text-align: center;
+        font-size: 12px;
+        color: #989ea4;
+        border-top: 1px solid #eaeaec;
+      }
+
+      /* --- LIST STYLES --- */
+      .section-title {
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #999;
+        margin-bottom: 10px;
+        letter-spacing: 1px;
+        margin-top: 20px;
+      }
+
+      /* The List Container */
+      .list-group {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+        background-color: #fff;
+      }
+
+      /* Individual Items */
+      .list-item {
+        padding: 15px 20px;
+        border-bottom: 1px solid #eee;
+        display: block;
+        text-decoration: none;
+        color: #333;
+        transition: background 0.2s;
+      }
+      .list-item:last-child {
+        border-bottom: none;
+      }
+      .list-item:hover {
+        background-color: #f8f9fa;
+      }
+
+      .icon {
+        margin-right: 12px;
+        font-size: 18px;
+        vertical-align: middle;
+        display: inline-block;
+      }
+      .item-text {
+        vertical-align: middle;
+        font-size: 15px;
+      }
+
+      /* Button - Brand Blue */
+      .btn {
+        display: inline-block;
+        background-color: #0d6efd;
+        color: #ffffff !important;
+        text-decoration: none;
+        padding: 12px 30px;
+        border-radius: 50px;
+        font-weight: bold;
+        font-size: 15px;
+        margin-top: 20px;
+      }
+      .btn:hover {
+        background-color: #0b5ed7;
+      }
+
+      /* --- DARK MODE OVERRIDES --- */
+      @media (prefers-color-scheme: dark) {
+        body,
+        .wrapper {
+          background-color: #1a1a1a !important;
+          color: #e0e0e0 !important;
+        }
+        .container {
+          background-color: #2d2d2d !important;
+          box-shadow: none !important;
+        }
+        .content {
+          color: #e0e0e0 !important;
+        }
+        .header h1 {
+          color: #ffffff !important;
+        }
+        .footer {
+          background-color: #252525 !important;
+          border-top: 1px solid #333 !important;
+          color: #888 !important;
         }
 
-        /* --- MOBILE RESPONSIVENESS --- */
-        @media screen and (max-width: 600px) {
-            .content { padding: 20px !important; }
-            .header { padding: 20px !important; }
-            .btn { display: block; width: 100%; text-align: center; box-sizing: border-box; }
+        .list-group {
+          background-color: #333 !important;
+          border: 1px solid #444 !important;
         }
+        .list-item {
+          border-bottom: 1px solid #444 !important;
+          color: #e0e0e0 !important;
+        }
+        .list-item:hover {
+          background-color: #3a3a3a !important;
+        }
+        .section-title {
+          color: #888 !important;
+        }
+      }
+
+      /* --- MOBILE RESPONSIVENESS --- */
+      @media screen and (max-width: 600px) {
+        .content {
+          padding: 20px !important;
+        }
+        .header {
+          padding: 20px !important;
+        }
+        .btn {
+          display: block;
+          width: 100%;
+          text-align: center;
+          box-sizing: border-box;
+        }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="wrapper">
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
-            <tr>
-                <td align="center" style="padding-top: 40px;">
-                    <div class="container">
-                        
-                        <div class="header">
-                            <h1>Unread Activity</h1>
-                        </div>
+      <table
+        role="presentation"
+        border="0"
+        cellpadding="0"
+        cellspacing="0"
+        width="100%"
+      >
+        <tr>
+          <td align="center" style="padding-top: 40px">
+            <div class="container">
+              <div class="header">
+                <h1>Unread Activity</h1>
+              </div>
 
-                        <div class="content">
-                            <p>Hi <strong>{{ user.name }}</strong>,</p>
-                            <p>You missed some activity on Blog App while you were away. Here is what happened in the last 24 hours:</p>
+              <div class="content">
+                <p>Hi <strong>{{ user.name }}</strong>,</p>
+                <p>
+                  You missed some activity on Blog App while you were away. Here
+                  is what happened in the last 24 hours:
+                </p>
 
-                            {% if msg_count > 0 %}
-                            <div class="section-title">Direct Messages</div>
-                            <div class="list-group">
-                                <a href="{{ inbox_url }}" class="list-item">
-                                    <span class="icon">💬</span>
-                                    <span class="item-text">You have <strong>{{ msg_count }} new message{% if msg_count > 1 %}s{% endif %}</strong></span>
-                                </a>
-                            </div>
-                            {% endif %}
+                {% if msg_count > 0 %}
+                <div class="section-title">Direct Messages</div>
+                <div class="list-group">
+                  <a href="{{ inbox_url }}" class="list-item">
+                    <span class="icon">💬</span>
+                    <span class="item-text"
+                      >You have
+                      <strong
+                        >{{ msg_count }} new message{% if msg_count > 1 %}s{%
+                        endif %}</strong
+                      ></span
+                    >
+                  </a>
+                </div>
+                {% endif %} {% if activity_list %}
+                <div class="section-title">Notifications</div>
+                <div class="list-group">
+                  {% for notif in activity_list %}
+                  <a href="{{ notif.link_url }}" class="list-item">
+                    {% if notif.category == 'comment' %}
+                    <span class="icon">📝</span>
+                    {% elif notif.category == 'post' %}
+                    <span class="icon">📰</span>
+                    {% elif notif.category == 'edit' %}
+                    <span class="icon">✏️</span>
+                    {% elif notif.category == 'like' %}
+                    <span class="icon" style="color: #e63946">❤️</span>
+                    {% else %}
+                    <span class="icon">🔔</span>
+                    {% endif %}
+                    <span class="item-text">{{ notif.message }}</span>
+                  </a>
+                  {% endfor %}
+                </div>
+                {% endif %}
 
-                            {% if activity_list %}
-                            <div class="section-title">Notifications</div>
-                            <div class="list-group">
-                                {% for notif in activity_list %}
-                                <a href="{{ notif.link_url }}" class="list-item">
-                                    {% if notif.category == 'comment' %}
-                                        <span class="icon">📝</span>
-                                    {% elif notif.category == 'post' %}
-                                        <span class="icon">📰</span>
-                                    {% elif notif.category == 'edit' %}
-                                        <span class="icon">✏️</span>
-                                    {% else %}
-                                        <span class="icon">🔔</span>
-                                    {% endif %}
-                                    <span class="item-text">{{ notif.message }}</span>
-                                </a>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
+                <div style="text-align: center">
+                  <a href="{{ home_url }}" class="btn">View All Activity</a>
+                </div>
+              </div>
 
-                            <div style="text-align: center;">
-                                <a href="{{ home_url }}" class="btn">View All Activity</a>
-                            </div>
-                        </div>
+              <div class="footer">
+                <p>Sent by <strong>Blog App</strong></p>
+                <p>
+                  You received this email because you have notifications enabled
+                  for your account.
+                </p>
 
-                        <div class="footer">
-                            <p>Sent by <strong>Blog App</strong></p>
-                            <p>You received this email because you have notifications enabled for your account.</p>
-                            
-                            <div style="margin-top: 10px;">
-                                <a href="{{ settings_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Manage Preferences</a> • 
-                                <a href="{{ privacy_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Privacy Policy</a> •
-                                <a href="{{ support_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Support</a>
-                            </div>
-                            
-                            <p style="margin-top: 20px;">&copy; {{ current_year }} Blog App Inc.</p>
-                        </div>
+                <div style="margin-top: 10px">
+                  <a
+                    href="{{ settings_url }}"
+                    style="
+                      color: #989ea4;
+                      margin: 0 5px;
+                      text-decoration: underline;
+                    "
+                    >Manage Preferences</a
+                  >
+                  •
+                  <a
+                    href="{{ privacy_url }}"
+                    style="
+                      color: #989ea4;
+                      margin: 0 5px;
+                      text-decoration: underline;
+                    "
+                    >Privacy Policy</a
+                  >
+                  •
+                  <a
+                    href="{{ support_url }}"
+                    style="
+                      color: #989ea4;
+                      margin: 0 5px;
+                      text-decoration: underline;
+                    "
+                    >Support</a
+                  >
+                </div>
 
-                    </div>
-                </td>
-            </tr>
-        </table>
+                <p style="margin-top: 20px">
+                  &copy; {{ current_year }} Blog App Inc.
+                </p>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </table>
     </div>
-</body>
+  </body>
 </html>

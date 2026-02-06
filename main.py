@@ -18,7 +18,7 @@ from bleach.css_sanitizer import CSSSanitizer
 from dotenv import load_dotenv
 from flask import (
     Flask, abort, render_template, redirect,
-    url_for, flash, request, session, send_from_directory, current_app
+    url_for, flash, jsonify, request, session, send_from_directory, current_app
 )
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
@@ -40,6 +40,7 @@ from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, tex
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
+from urllib.parse import urlparse
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
 
@@ -73,6 +74,7 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = (os.environ.get("ENV") == "production")
+    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
     
     # Email Tokens
     EMAIL_SECRET_KEY = os.environ["EMAIL_SECRET_KEY"]
@@ -162,6 +164,12 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY")
 # -------------------------------------------------------------------
 # 3. DATABASE MODELS
 # -------------------------------------------------------------------
+# Helper table for the Many-to-Many relationship between Users and BlogPosts (Likes)
+post_likes = db.Table(
+    'post_likes',
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
+    db.Column('post_id', db.Integer, db.ForeignKey('blog_posts.id', ondelete="CASCADE"), primary_key=True)
+)
 
 class User(UserMixin, db.Model):
     __tablename__ = "users"
@@ -235,6 +243,24 @@ class BlogPost(db.Model):
     can_comment: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     
     comments = relationship("Comment", back_populates="parent_post", passive_deletes=True)
+
+    # --- NEW: Likes Relationship ---
+    # This creates a list of Users who liked this post.
+    # We can access it via: post.liked_by (returns list of users)
+    # We can count it via: len(post.liked_by)
+    liked_by = relationship(
+        "User", 
+        secondary=post_likes, 
+        backref=db.backref("liked_posts", lazy="dynamic"),
+        lazy="dynamic"
+    )
+
+    # Helper method to check if a specific user liked this post
+    def is_liked_by(self, user):
+        if not user.is_authenticated:
+            return False
+        # Check if user is in the list of likers
+        return self.liked_by.filter(post_likes.c.user_id == user.id).count() > 0
 
 
 class Comment(db.Model):
@@ -332,6 +358,42 @@ class BannedUser(db.Model):
     banned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     banned_by: Mapped[str] = mapped_column(String(120), nullable=False) # Stores admin username
 
+# --- NEW: Contact Form Storage ---
+class ContactMessage(db.Model):
+    __tablename__ = "contact_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # Message Details
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Metadata
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id")) # Link if user was logged in
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+# --- NEW: Admin Audit Log ---
+# Stores records of warnings and forced deletions
+class AdminLog(db.Model):
+    __tablename__ = "admin_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # Who did it?
+    admin_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    
+    # Who was affected?
+    target_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
+    
+    # What happened?
+    action_type: Mapped[str] = mapped_column(String(50), nullable=False) # e.g., "delete_post", "warn_user"
+    details: Mapped[str] = mapped_column(Text, nullable=False) # Reason or Warning Message
+    
+    # Context (e.g., The title of the deleted post)
+    resource_info: Mapped[str | None] = mapped_column(String(255)) 
+    
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
 # -------------------------------------------------------------------
 # 4. HELPERS & DECORATORS
 # -------------------------------------------------------------------
@@ -422,6 +484,12 @@ def anonymize_user_data(user):
     # 4. Remove Push Subscriptions
     for sub in user.push_subscriptions:
         db.session.delete(sub)
+
+    # 5. NEW: Clear Notification History
+    # Since the user row isn't deleted (just updated), DB cascade doesn't run.
+    # We manually clear their old notifications to save space.
+    for notif in user.notifications:
+        db.session.delete(notif)
         
     return user
 
@@ -429,7 +497,7 @@ def anonymize_user_data(user):
 # 5. NOTIFICATION SYSTEM
 # -------------------------------------------------------------------
 
-def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None, related_comment_id=None, icon_url=None, image_url=None):
+def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None, related_comment_id=None, icon_url=None, image_url=None, badge_url=None, favicon_url=None):
     """
     Background Task:
     1. Saves notification to DB (Persistence for Daily Digest).
@@ -465,11 +533,11 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                     "url": link_url,
                     "timestamp": timestamp_ms,
                     # 1. Avatar of the person causing the action (or App Logo)
-                    "icon": icon_url or url_for('static', filename='assets/favicon.ico', _external=True),
+                    "icon": icon_url or favicon_url,
                     # 2. Rich Image (For New Posts) - Android/Windows only
                     "image": image_url, 
                     # 3. Badge (Small monochrome icon for Android status bar)
-                    "badge": url_for('static', filename='assets/badge.png', _external=True),
+                    "badge": badge_url,
                     # 4. Tag (Prevents stacking: updates existing notif instead of adding new one)
                     "tag": f"{category}_{related_post_id}" if related_post_id else "general"
                 }
@@ -606,6 +674,7 @@ def send_digest():
                         Notification.is_read == False, 
                         Notification.timestamp < cutoff
                     )
+                    .order_by(Notification.timestamp.desc())
                 ).all()
                 
                 # Double check there is actually something to send
@@ -729,6 +798,26 @@ def confirm_password_reset_token(token: str):
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
+    # 1. PRIORITY: Check if this is an AJAX/API request
+    # 'application/json' in Accept header OR X-Requested-With header
+    if (request.is_json or 
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        'application/json' in request.headers.get('Accept', '')):
+        
+        return jsonify({
+            "error": "session_expired",
+            "message": "Your session has expired. Please log in again."
+        }), 401  # 401 Unauthorized is the correct signal for apiFetch
+
+    # 2. STANDARD: HTML Form Request (Browser)
+    if request.method == "POST":
+        try:
+            # Convert ImmutableMultiDict to a regular dict and remove the invalid token
+            restored_data = {k: v for k, v in request.form.items() if k != "csrf_token"}
+            session["restored_form_data"] = restored_data
+        except Exception:
+            pass # Fail silently if form parsing errors
+    
     flash("Your session expired. Please try again.", "warning")
     return redirect(request.referrer or url_for("login_get"))
 
@@ -918,26 +1007,40 @@ def resend_verification_post():
     flash("If an account exists with this email, a verification link has been sent.", "info")
 
     if user:
-        token = generate_email_token(user.id, now)
-        verify_url = url_for("verify_email", token=token, _external=True)
-        # --- FAIL-SAFE: Generate Common Links for Emails ---
-        privacy_url = url_for('legal', page_name='privacy', _external=True)
-        support_url = url_for('contact', _external=True)
+        try:
+            # 1. COMMIT (Database First)
+            # Update the timestamp immediately to prevent spamming
+            with safe_commit():
+                user.verification_sent_at = now
 
-        socketio.start_background_task(
-            send_email, 
-            user.email, 
-            "Verify your email", 
-            render_template(
+            # 2. NOTIFY (Only runs if DB succeeds)
+            # Generate the token based on the user ID and the 'now' timestamp we just saved
+            token = generate_email_token(user.id, now)
+            verify_url = url_for("verify_email", token=token, _external=True)
+            
+            # --- FAIL-SAFE: Generate Common Links for Emails ---
+            privacy_url = url_for('legal', page_name='privacy', _external=True)
+            support_url = url_for('contact', _external=True)
+
+            html_body = render_template(
                 "email/verify.html", 
                 verify_url=verify_url, 
                 user=user,
                 privacy_url=privacy_url, # Passed here
                 support_url=support_url  # Passed here
             )
-        )
-        with safe_commit():
-            user.verification_sent_at = now
+
+            socketio.start_background_task(
+                send_email, 
+                user.email, 
+                "Verify your email", 
+                html_body
+            )
+            
+        except Exception as e:
+            # Log the error internally for debugging
+            # We do NOT flash an error to the user to prevent username enumeration
+            logger.error(f"Verification resend failed for {email}: {e}")
 
     session.pop("captcha_required", None)
     return redirect(url_for("resend_verification_get"))
@@ -970,24 +1073,31 @@ def request_reset_post():
     flash("If an account exists, a password reset link has been sent.", "info")
 
     if user:
-        token = generate_password_reset_token(user.id, now)
-        reset_url = url_for("reset_password", token=token, _external=True)
-        # --- FAIL-SAFE: Generate Common Links for Emails ---
-        privacy_url = url_for('legal', page_name='privacy', _external=True)
-        support_url = url_for('contact', _external=True)
+        try:
+            # 1. COMMIT (Update timestamp first)
+            with safe_commit():
+                user.reset_password_sent_at = now
+            
+            # 2. NOTIFY (Send email second)
+            # Use the 'now' variable we just saved to ensure token matches timestamp logic
+            token = generate_password_reset_token(user.id, now)
+            reset_url = url_for("reset_password", token=token, _external=True)
+            
+            privacy_url = url_for('legal', page_name='privacy', _external=True)
+            support_url = url_for('contact', _external=True)
 
-        html_body = render_template(
-            "email/reset_password.html", 
-            reset_url=reset_url, 
-            user=user,
-            privacy_url=privacy_url, # Passed here
-            support_url=support_url  # Passed here
-        )
-        
-        socketio.start_background_task(send_email, user.email, "Reset your password", html_body)
-        
-        with safe_commit():
-            user.reset_password_sent_at = now
+            html_body = render_template(
+                "email/reset_password.html", 
+                reset_url=reset_url, 
+                user=user,
+                privacy_url=privacy_url,
+                support_url=support_url
+            )
+            
+            socketio.start_background_task(send_email, user.email, "Reset your password", html_body)
+            
+        except Exception as e:
+            logger.error(f"Password reset request failed for {email}: {e}")
 
     session.pop("captcha_required", None)
     return redirect(url_for("request_reset_get"))
@@ -1029,6 +1139,9 @@ def reset_password(token):
 @app.route("/login", methods=["GET"])
 def login_get():
     form = LoginForm()
+    if request.args.get("mode") == "session_expired":
+        flash("Your session has expired. Please log in again to continue.", "info")
+
     return render_template("login.html", login_form=form, captcha_required=(app.config["CAPTCHA_ENABLED"] and session.get("captcha_required")), hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"])
 
 @app.route("/login", methods=["POST"])
@@ -1085,8 +1198,13 @@ def login_post():
         return redirect(url_for("resend_verification_get"))
 
     logger.info(f"Successful login: {email}")
-    login_user(user, fresh=True)
-    return redirect(url_for("get_all_posts"))
+    login_user(user, fresh=True, remember=True)
+
+    next_page = request.args.get('next')
+    if not next_page or urlparse(next_page).netloc != '':
+        next_page = url_for('get_all_posts')
+
+    return redirect(next_page)
 
 @app.route("/logout")
 @login_required
@@ -1370,6 +1488,50 @@ def get_user_posts():
     ).all()
     return render_template("index.html", all_posts=posts, page_title="My Posts")
 
+@app.route("/like/<int:post_id>", methods=["POST"])
+@login_required
+def like_post(post_id):
+    post = db.get_or_404(BlogPost, post_id)
+    
+    # Logic: Toggle Like
+    if post.is_liked_by(current_user):
+        post.liked_by.remove(current_user)
+        action = "unliked"
+        should_notify = False
+    else:
+        post.liked_by.append(current_user)
+        action = "liked"
+        should_notify = (post.author_id != current_user.id and post.author.notify_on_comments)
+
+    # 1. COMMIT FIRST
+    with safe_commit():
+        db.session.add(post)
+    
+    # 2. NOTIFY SECOND (Only if Liked + Commit succeeded)
+    if should_notify:
+        try:
+            post_url = url_for('show_post', post_id=post.id, _external=True)
+            socketio.start_background_task(
+                send_notification_async,
+                post.author.id,
+                "New Like",
+                f"{current_user.name} liked your post: {post.title}",
+                post_url,
+                "like",
+                related_post_id=post.id,
+                icon_url=get_gravatar_url(current_user.email),
+                badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+            )
+        except Exception as e:
+            logger.error(f"Like notification failed: {e}")
+
+    return {
+        "likes_count": post.liked_by.count(),
+        "action": action,
+        "liked": (action == "liked")
+    }
+
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
     post = db.session.get(BlogPost, post_id)
@@ -1393,6 +1555,15 @@ def show_post(post_id):
             )
 
     form = CommentForm()
+
+    # --- DATA RESTORATION LOGIC ---
+    if request.method == "GET" and "restored_form_data" in session:
+        restored_data = session.pop("restored_form_data")
+        # Only restore if this data belongs to a comment form (has 'comment_text')
+        if 'comment_text' in restored_data:
+            form.process(data=restored_data)
+            # flash("We restored your comment text.", "info")
+
     if form.validate_on_submit():
         if not current_user.is_authenticated:
             flash("You need to login to comment.", "warning")
@@ -1448,7 +1619,9 @@ def show_post(post_id):
                     "comment",
                     related_post_id=post.id,
                     related_comment_id=new_comment.id,
-                    icon_url=get_gravatar_url(current_user.email)
+                    icon_url=get_gravatar_url(current_user.email),
+                    badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                    favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
                 )
                 
             # 2. Notify Parent Commenter (Reply Logic)
@@ -1468,7 +1641,9 @@ def show_post(post_id):
                             "comment",
                             related_post_id=post.id,
                             related_comment_id=new_comment.id,
-                            icon_url=get_gravatar_url(current_user.email)
+                            icon_url=get_gravatar_url(current_user.email),
+                            badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
                         )
 
         except Exception as e:
@@ -1549,6 +1724,12 @@ def load_more_comments(post_id):
 @login_required 
 def add_new_post():
     form = CreatePostForm()
+
+    if request.method == "GET" and "restored_form_data" in session:
+        restored_data = session.pop("restored_form_data")
+        # process() creates the form fields with the restored data
+        form.process(data=restored_data) 
+        # flash("We restored your post content.", "info")
     
     if form.validate_on_submit():
         # 1. DUPLICATE CHECK (Case-Insensitive)
@@ -1605,7 +1786,9 @@ def add_new_post():
                             "post",
                             related_post_id=post.id,
                             icon_url=get_gravatar_url(current_user.email),
-                            image_url=post.img_url
+                            image_url=post.img_url,
+                            badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
                         )
         except Exception as e:
             # Log the error internally but allow the request to succeed
@@ -1630,6 +1813,12 @@ def edit_post(post_id):
         abort(403) 
 
     form = CreatePostForm(obj=post)
+
+    # --- DATA RESTORATION LOGIC (Overrides Database) ---
+    if request.method == "GET" and "restored_form_data" in session:
+        restored_data = session.pop("restored_form_data")
+        form.process(data=restored_data)
+        # flash("We restored your unsaved edits.", "info")
     
     if form.validate_on_submit():
         # 1. DUPLICATE CHECK (Excluding current post)
@@ -1675,7 +1864,9 @@ def edit_post(post_id):
                             "edit",
                             related_post_id=post.id,
                             icon_url=get_gravatar_url(current_user.email),
-                            image_url=post.img_url
+                            image_url=post.img_url,
+                            badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
                         )
         except Exception as e:
             logger.error(f"Notification Error for post {post.id}: {e}")
@@ -1708,10 +1899,35 @@ def admin_delete_post(post_id):
     form = DeleteReasonForm()
 
     if form.validate_on_submit():
+        # 1. CAPTURE DATA (Before deletion)
+        # We must grab these details now because accessing 'post.author' 
+        # after deletion might fail or cause DB errors.
+        target_email = post.author.email
+        post_title = post.title
+        author_obj = post.author 
+        reason = form.reason.data
+        
+        # Capture IDs for the log
+        admin_id = current_user.id
+        target_user_id = post.author.id
+
         try:
-            reason = form.reason.data
-            subject = f"Your post '{post.title}' has been removed"
+            # 2. COMMIT (Database First)
+            with safe_commit():
+                # 1. NEW: Create Audit Log
+                log_entry = AdminLog(
+                    admin_id=admin_id,
+                    target_user_id=target_user_id,
+                    action_type="delete_post",
+                    details=reason,
+                    resource_info=f"Post ID {post_id}: {post_title}" # Save title since post will be gone
+                )
+                db.session.add(log_entry)
+
+                # 2. Delete Post
+                db.session.delete(post)
             
+            # 3. NOTIFY (Only runs if DB succeeds)
             # --- FAIL-SAFE: Generate Common Links for Emails ---
             guidelines_url = url_for('legal', page_name='guidelines', _external=True)
             terms_url = url_for('legal', page_name='terms', _external=True)
@@ -1719,23 +1935,25 @@ def admin_delete_post(post_id):
 
             html_body = render_template(
                 "email/post_deleted.html", 
-                user=post.author, 
-                post_title=post.title, 
+                user=author_obj, 
+                post_title=post_title, 
                 reason=reason,
                 guidelines_url=guidelines_url, # Passed here
                 terms_url=terms_url,           # Passed here
                 support_url=support_url        # Passed here
             )
             
-            # Send Email
-            socketio.start_background_task(send_email, post.author.email, subject, html_body)
+            subject = f"Your post '{post_title}' has been removed"
             
-            with safe_commit():
-                db.session.delete(post)
+            # Send Email
+            socketio.start_background_task(send_email, target_email, subject, html_body)
             
             flash("Post deleted and user notified.", "success")
             return redirect(url_for("user_profile", username=target_username))
-        except Exception:
+            
+        except Exception as e:
+            # Log the specific error for debugging
+            logger.error(f"Admin delete failed for post {post_id}: {e}")
             flash("Error deleting post.", "danger")
 
     return render_template("admin_delete_post.html", form=form, post=post)
@@ -1748,27 +1966,59 @@ def warn_post_author(post_id):
     form = WarnUserForm()
 
     if form.validate_on_submit():
+        # 1. CAPTURE DATA
+        # We capture these now to ensure they are available for the email
+        # even if we were to modify the object later.
+        target_email = post.author.email
+        post_title = post.title
+        author_obj = post.author
         warning_message = form.message.data
-        subject = f"Warning regarding your post: '{post.title}'"
         
-        # --- FAIL-SAFE: Generate Common Links for Emails ---
-        guidelines_url = url_for('legal', page_name='guidelines', _external=True)
-        terms_url = url_for('legal', page_name='terms', _external=True)
-        support_url = url_for('contact', _external=True)
+        # Capture IDs for the log
+        admin_id = current_user.id
+        target_user_id = post.author.id
 
-        html_body = render_template(
-            "email/warning_notification.html", 
-            user=post.author, 
-            post_title=post.title, 
-            message=warning_message,
-            guidelines_url=guidelines_url, # Passed here
-            terms_url=terms_url,           # Passed here
-            support_url=support_url        # Passed here
-        )
-        
-        socketio.start_background_task(send_email, post.author.email, subject, html_body)
-        flash(f"Warning sent to {post.author.name}.", "success")
-        return redirect(url_for("user_profile", username=target_username))
+        try:
+            # 2. COMMIT (Database First)
+            # We log the warning officially in the database first.
+            with safe_commit():
+                # NEW: Save Log to DB
+                log_entry = AdminLog(
+                    admin_id=admin_id,
+                    target_user_id=target_user_id,
+                    action_type="warn_user",
+                    details=warning_message,
+                    resource_info=f"Post ID {post_id}: {post_title}"
+                )
+                db.session.add(log_entry)
+            
+            # 3. NOTIFY (Only runs if DB Log succeeds)
+            subject = f"Warning regarding your post: '{post_title}'"
+            
+            # --- FAIL-SAFE: Generate Common Links for Emails ---
+            guidelines_url = url_for('legal', page_name='guidelines', _external=True)
+            terms_url = url_for('legal', page_name='terms', _external=True)
+            support_url = url_for('contact', _external=True)
+
+            html_body = render_template(
+                "email/warning_notification.html", 
+                user=author_obj, 
+                post_title=post_title, 
+                message=warning_message,
+                guidelines_url=guidelines_url, # Passed here
+                terms_url=terms_url,           # Passed here
+                support_url=support_url        # Passed here
+            )
+            
+            socketio.start_background_task(send_email, target_email, subject, html_body)
+            
+            flash(f"Warning sent to {author_obj.name}.", "success")
+            return redirect(url_for("user_profile", username=target_username))
+
+        except Exception as e:
+            # Log error and ensure admin knows the action failed
+            logger.error(f"Failed to save admin log or send warning: {e}")
+            flash("System error. Warning was NOT sent.", "danger")
 
     return render_template("admin_warn_author.html", form=form, post=post, page_title="Warn User")
 
@@ -1791,7 +2041,19 @@ def contact():
     form = ContactForm()
     if form.validate_on_submit():
         try:
-            html_body = render_template("email/contact_message.html", name=form.name.data, email=form.email.data, phone=form.phone.data, message=form.message.data)
+            # 1. NEW: Save to Database
+            with safe_commit():
+                msg = ContactMessage(
+                    name=form.name.data,
+                    email=form.email.data,
+                    message=form.message.data,
+                    ip_address=get_remote_address(),
+                    user_id=current_user.id if current_user.is_authenticated else None
+                )
+                db.session.add(msg)
+
+            # 2. Send Email
+            html_body = render_template("email/contact_message.html", name=form.name.data, email=form.email.data, message=form.message.data)
             send_email(to=os.environ["CONTACT_RECEIVER_EMAIL"], subject="New Contact Form Message", html_body=html_body, reply_to=form.email.data)
             flash("Your message has been sent successfully!", "success")
             return redirect(url_for('contact'))
@@ -1831,7 +2093,7 @@ def inject_global_vars():
 @app.route("/subscribe", methods=["POST"])
 def subscribe():
     if not current_user.is_authenticated:
-        return "Unauthorized", 401
+        return jsonify({"error": "unauthorized"}), 401
 
     try:
         subscription_json = json.dumps(request.json)
@@ -2046,17 +2308,36 @@ def admin_delete_user(user_id):
     form = AdminDeleteUserForm()
 
     if form.validate_on_submit():
+        # 1. CAPTURE DATA (Before Anonymization)
+        # We need the email now because it will be gone after anonymization
+        original_email = user_to_delete.email
+        original_name = user_to_delete.name
+        # We capture the object or name/username to pass to the template
+        reason = form.reason.data
+        admin_username = current_user.username
+        
         try:
-            original_email = user_to_delete.email
-            reason = form.reason.data
+            # 2. COMMIT (Database First)
+            # The ban logic must succeed before we tell the user.
+            with safe_commit():
+                # B. Add to Ban List
+                ban_entry = BannedUser(
+                    email=original_email,
+                    reason=reason,
+                    banned_by=admin_username
+                )
+                db.session.add(ban_entry)
+                
+                # C. Anonymize User Data (Ghost Protocol)
+                anonymize_user_data(user_to_delete)
             
-            # A. Send Termination Email (Before anonymizing so we have the email)
+            # 3. NOTIFY (Only runs if DB succeeds)
             support_url = url_for('contact', _external=True)
             guidelines_url = url_for('legal', page_name='guidelines', _external=True)
             
             html_body = render_template(
                 "email/account_terminated.html",
-                user=user_to_delete,
+                name=original_name, # Pass object, or use captured name if needed
                 reason=reason,
                 support_url=support_url,
                 guidelines_url=guidelines_url
@@ -2069,23 +2350,11 @@ def admin_delete_user(user_id):
                 html_body
             )
 
-            with safe_commit():
-                # B. Add to Ban List
-                ban_entry = BannedUser(
-                    email=original_email,
-                    reason=reason,
-                    banned_by=current_user.username
-                )
-                db.session.add(ban_entry)
-                
-                # C. Anonymize User Data (Ghost Protocol)
-                anonymize_user_data(user_to_delete)
-            
             flash(f"User {original_email} has been banned and data anonymized.", "success")
             return redirect(url_for('get_all_posts'))
             
         except Exception as e:
-            logger.error(f"Failed to ban user: {e}")
+            logger.error(f"Failed to ban user {original_email}: {e}")
             flash("Error banning user.", "danger")
 
     return render_template("admin_delete_user.html", form=form, user=user_to_delete)
@@ -2140,6 +2409,7 @@ def handle_socket_message(data):
 
             # 3. Push Notification (Background Task)
             chat_url = url_for('chat', user_id=current_user.id, _external=True)
+            badge_url=url_for('static', filename='assets/badge.png', _external=True)
             
             # Use general notification system but customize logic
             socketio.start_background_task(
@@ -2149,7 +2419,9 @@ def handle_socket_message(data):
                 msg.body,
                 chat_url,
                 "chat",
-                icon_url=get_gravatar_url(current_user.email)
+                icon_url=get_gravatar_url(current_user.email),
+                badge_url=badge_url,
+                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
             )
         except Exception as e:
             logger.error(f"Socket message failed: {e}")

@@ -144,6 +144,55 @@
       width: 50px;
     }
   }
+
+  .like-btn {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    /* Removed the :active scale(0.9) to stop the 'shrink' glitch */
+  }
+
+  /* Unliked State: Dark Grey/Black Outline */
+  .heart-icon.bi-heart {
+    color: #262626; 
+    transition: transform 0.2s;
+  }
+  
+  /* Liked State: Instagram Red Fill */
+  .heart-icon.bi-heart-fill {
+    color: #ed4956;
+    /* Only pop when the Like is actually registered */
+    animation: heart-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  /* Hover Effect: Gentle scale */
+  .like-btn:hover .heart-icon {
+    transform: scale(1.1);
+    cursor: pointer;
+  }
+
+  /* The One and Only Pop Animation */
+  @keyframes heart-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.35); } /* Slightly bigger pop */
+    100% { transform: scale(1); } /* Return to normal (or hover state takes over) */
+  }
+
+  /* Count Text */
+  .like-count {
+    color: #262626;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-width: 15px; 
+  }
+
+  .action-btn {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .action-btn:hover {
+    transform: scale(1.25); /* Pop up effect */
+  }
 </style>
 
 <header
@@ -525,10 +574,14 @@ posts|length > 0 %}
           }
 
           // Fetch specific user posts
-          fetch(`/user/${username}/load?page=${nextPage}`)
-            .then(response => response.text())
+          apiFetch(`/user/${username}/load?page=${nextPage}`)
+            .then(response => {
+                // 1. Safety: If redirected to login, response is null. Stop.
+                if (!response) return null;
+                return response.text();
+            })
             .then(html => {
-              if (html.trim().length > 0) {
+              if (html && html.trim().length > 0) {
                 container.insertAdjacentHTML('beforeend', html);
 
                 // Re-run time formatting

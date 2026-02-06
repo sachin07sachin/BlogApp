@@ -75,7 +75,7 @@
             <div class="card-body p-4 p-sm-5">
                 <h3 class="card-title text-center mb-4 fw-light fs-4">Sign In</h3>
 
-                <form method="POST" action="{{ url_for('login_post') }}" novalidate>
+                <form method="POST" action="{{ url_for('login_post', next=request.args.get('next')) }}" novalidate>
                   {{ login_form.hidden_tag() }}
 
                   <div class="form-floating mb-3">

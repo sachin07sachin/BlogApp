@@ -74,7 +74,6 @@ class CommentForm(FlaskForm):
 class ContactForm(FlaskForm):
     name = StringField("Name", validators=[DataRequired(), Length(max=120, message="Name cannot exceed 120 characters.")])
     email = StringField("Email", validators=[DataRequired(), Email()])
-    phone = StringField("Phone", validators=[DataRequired(), Length(max=20)])
     message = TextAreaField(
         "Message",
         validators=[DataRequired(), Length(min=10, max=2000, message="Message must be between 10 and 2000 characters.")]
@@ -180,7 +179,7 @@ class SettingsForm(FlaskForm):
     
     # Toggle 1: Engagement (Covers both Authors and Commenters)
     notify_on_comments = BooleanField(
-        "Notify me when someone comments on my posts or replies to my comments",
+        "Notify me when someone comments on my posts, replies to my comments, or likes my posts",
         render_kw={"class": "form-check-input"} 
     )
     
