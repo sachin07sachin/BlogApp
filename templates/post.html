@@ -513,9 +513,9 @@
           category_filter=["comment_success", "comment_danger"]) %} {% if
           messages %} {% for category, message in messages %} {% set
           bootstrap_class = 'success' if category == 'comment_success' else
-          'danger' %} {% if category == 'comment_success' %}
+          'danger' %} {#{% if category == 'comment_success' %}
           <div id="flash-success" style="display: none"></div>
-          {% else %}
+          {% else %}#}
           <div
             class="alert alert-{{ bootstrap_class }} alert-dismissible fade show shadow-sm"
             role="alert"
@@ -527,7 +527,7 @@
               data-bs-dismiss="alert"
             ></button>
           </div>
-          {% endif %} {% endfor %} {% endif %} {% endwith %}
+         {# {% endif %}#} {% endfor %} {% endif %} {% endwith %}
 
           <form
             method="POST"

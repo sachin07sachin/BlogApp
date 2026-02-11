@@ -233,7 +233,10 @@
                     {% else %}
                     <span class="icon">🔔</span>
                     {% endif %}
-                    <span class="item-text">{{ notif.message }}</span>
+                    <span class="item-text" style="word-break: break-word;"
+                      >{{ notif.message | normalize_whitespace | truncate(100)
+                      }}</span
+                    >
                   </a>
                   {% endfor %}
                 </div>

@@ -151,7 +151,7 @@
                   >
                     <i class="bi bi-eye" id="icon-reg"></i>
                   </button>
-                </div>    
+                </div>
 
                 {% if form.password.errors %}
                 <div class="text-danger mt-1">
@@ -186,8 +186,6 @@
                   </ul>
                 </div>
               </div>
-
-              
 
               <div class="form-check mb-3 mt-4">
                 {{ form.agree_terms(class="form-check-input", id="agree_terms")
@@ -289,17 +287,23 @@
       submitBtn.disabled = !this.checked;
     });
   }
-  // --- 3. NEW: AUTO-SCROLL TO ERRORS (Added this) ---
+  
+  // --- 3. UPDATED: PRECISE AUTO-SCROLL TO ERRORS ---
+  // Matches make_post.html logic for consistency
   document.addEventListener("DOMContentLoaded", () => {
-    // We target the 'main' tag or the specific container holding the messages
-    const formContainer = document.querySelector("main");
+    
+    // Priority 1: Flash Messages
+    const flashMessage = document.querySelector(".alert");
+    
+    // Priority 2: Specific Form Field Errors (Look for .text-danger)
+    const formError = document.querySelector(".text-danger");
 
-    const hasFlashMessages = document.querySelector(".alert");
-    const hasValidationErrors = document.querySelector(".text-danger");
+    // Determine target
+    const target = flashMessage || formError;
 
-    if (formContainer && (hasFlashMessages || hasValidationErrors)) {
-      // Scroll to the top of the main container so users see the Alert immediately
-      formContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target) {
+        // Scroll the SPECIFIC element into center view
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     // --- 4. REAL-TIME PASSWORD VALIDATION ---
@@ -321,8 +325,7 @@
         criteriaBox.classList.remove("d-none");
       });
 
-      // B. Hide Box on Blur (only if empty or fully valid, optional)
-      // For now, let's keep it visible if they have typed something but it's wrong.
+      // B. Hide Box on Blur (only if empty)
       passwordInput.addEventListener("blur", () => {
         if (passwordInput.value === "") {
           criteriaBox.classList.add("d-none");

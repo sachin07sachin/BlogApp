@@ -156,10 +156,10 @@
 
   /* Unliked State: Dark Grey/Black Outline */
   .heart-icon.bi-heart {
-    color: #262626; 
+    color: #262626;
     transition: transform 0.2s;
   }
-  
+
   /* Liked State: Instagram Red Fill */
   .heart-icon.bi-heart-fill {
     color: #ed4956;
@@ -175,16 +175,23 @@
 
   /* The One and Only Pop Animation */
   @keyframes heart-pop {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.35); } /* Slightly bigger pop */
-    100% { transform: scale(1); } /* Return to normal (or hover state takes over) */
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.35);
+    } /* Slightly bigger pop */
+    100% {
+      transform: scale(1);
+    } /* Return to normal (or hover state takes over) */
   }
 
   /* Count Text */
   .like-count {
     color: #262626;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    min-width: 15px; 
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-width: 15px;
   }
 
   .action-btn {
@@ -510,101 +517,108 @@ posts|length > 0 %}
 </div>
 {% endblock %} {% block scripts %}
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const fab = document.getElementById("composeButton");
-    const footer = document.querySelector("footer");
+    document.addEventListener("DOMContentLoaded", function () {
+      const fab = document.getElementById("composeButton");
+      const footer = document.querySelector("footer");
 
-    // --- AUTO SCROLL LOGIC ---
-    const isSearchActive = {{ 'true' if search_message and search_message != 'All Posts' else 'false' }};
-    if (isSearchActive) {
-        const resultsAnchor = document.getElementById('results-anchor');
-        if (resultsAnchor) setTimeout(() => resultsAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    }
+      // --- AUTO SCROLL LOGIC ---
+      const isSearchActive = {{ 'true' if search_message and search_message != 'All Posts' else 'false' }};
+      if (isSearchActive) {
+          const resultsAnchor = document.getElementById('results-anchor');
+          if (resultsAnchor) setTimeout(() => resultsAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+      }
 
-    // --- DELETE MODAL DYNAMIC LINKER ---
-    const deleteModal = document.getElementById('deletePostModal');
-    if (deleteModal) {
-      deleteModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const deleteUrl = button.getAttribute('data-delete-url');
-        const form = deleteModal.querySelector('#deletePostForm');
-        form.action = deleteUrl;
-      });
-    }
+      // Handle Flash Messages ONLY
+  const flashMessage = document.querySelector(".alert");
 
-    // --- FAB ANIMATION LOGIC ---
-    if (fab) {
-      let lastScrollY = window.scrollY;
-      const defaultBottom = 50;
-      const gapAboveFooter = 20;
+  if (flashMessage) {
+      flashMessage.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
-      window.addEventListener("scroll", () => {
-        const currentScrollY = window.scrollY;
-        if (currentScrollY > lastScrollY + 10) fab.classList.add("shrunk");
-        else if (currentScrollY < lastScrollY - 10) fab.classList.remove("shrunk");
-        lastScrollY = currentScrollY;
+      // --- DELETE MODAL DYNAMIC LINKER ---
+      const deleteModal = document.getElementById('deletePostModal');
+      if (deleteModal) {
+        deleteModal.addEventListener('show.bs.modal', function (event) {
+          const button = event.relatedTarget;
+          const deleteUrl = button.getAttribute('data-delete-url');
+          const form = deleteModal.querySelector('#deletePostForm');
+          form.action = deleteUrl;
+        });
+      }
 
-        if (footer) {
-          const footerRect = footer.getBoundingClientRect();
-          const visibleFooterHeight = window.innerHeight - footerRect.top;
-          if (visibleFooterHeight > 0) fab.style.bottom = `${Math.max(defaultBottom, visibleFooterHeight + gapAboveFooter)}px`;
-          else fab.style.bottom = `${defaultBottom}px`;
-        }
-      });
-    }
+      // --- FAB ANIMATION LOGIC ---
+      if (fab) {
+        let lastScrollY = window.scrollY;
+        const defaultBottom = 50;
+        const gapAboveFooter = 20;
 
-    // --- INFINITE SCROLL LOGIC ---
-    const sentinel = document.getElementById("loading-sentinel");
-    const container = document.getElementById("posts-container");
-    const endMessage = document.getElementById("end-of-content");
-    let isLoading = false;
+        window.addEventListener("scroll", () => {
+          const currentScrollY = window.scrollY;
+          if (currentScrollY > lastScrollY + 10) fab.classList.add("shrunk");
+          else if (currentScrollY < lastScrollY - 10) fab.classList.remove("shrunk");
+          lastScrollY = currentScrollY;
 
-    if (sentinel) {
-      const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && !isLoading) {
-          isLoading = true;
-          const nextPage = sentinel.getAttribute("data-next-page");
-          const username = sentinel.getAttribute("data-username"); // Get Username from HTML
-
-          // Stop if no more pages
-          if (!nextPage || nextPage === "None") {
-             sentinel.remove();
-             if (endMessage) endMessage.style.display = "block";
-             return;
+          if (footer) {
+            const footerRect = footer.getBoundingClientRect();
+            const visibleFooterHeight = window.innerHeight - footerRect.top;
+            if (visibleFooterHeight > 0) fab.style.bottom = `${Math.max(defaultBottom, visibleFooterHeight + gapAboveFooter)}px`;
+            else fab.style.bottom = `${defaultBottom}px`;
           }
+        });
+      }
 
-          // Fetch specific user posts
-          apiFetch(`/user/${username}/load?page=${nextPage}`)
-            .then(response => {
-                // 1. Safety: If redirected to login, response is null. Stop.
-                if (!response) return null;
-                return response.text();
-            })
-            .then(html => {
-              if (html && html.trim().length > 0) {
-                container.insertAdjacentHTML('beforeend', html);
+      // --- INFINITE SCROLL LOGIC ---
+      const sentinel = document.getElementById("loading-sentinel");
+      const container = document.getElementById("posts-container");
+      const endMessage = document.getElementById("end-of-content");
+      let isLoading = false;
 
-                // Re-run time formatting
-                if (window.localizeTimes) window.localizeTimes(container);
+      if (sentinel) {
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && !isLoading) {
+            isLoading = true;
+            const nextPage = sentinel.getAttribute("data-next-page");
+            const username = sentinel.getAttribute("data-username"); // Get Username from HTML
 
-                const nextNum = parseInt(nextPage) + 1;
-                sentinel.setAttribute("data-next-page", nextNum);
+            // Stop if no more pages
+            if (!nextPage || nextPage === "None") {
+               sentinel.remove();
+               if (endMessage) endMessage.style.display = "block";
+               return;
+            }
+
+            // Fetch specific user posts
+            apiFetch(`/user/${username}/load?page=${nextPage}`)
+              .then(response => {
+                  // 1. Safety: If redirected to login, response is null. Stop.
+                  if (!response) return null;
+                  return response.text();
+              })
+              .then(html => {
+                if (html && html.trim().length > 0) {
+                  container.insertAdjacentHTML('beforeend', html);
+
+                  // Re-run time formatting
+                  if (window.localizeTimes) window.localizeTimes(container);
+
+                  const nextNum = parseInt(nextPage) + 1;
+                  sentinel.setAttribute("data-next-page", nextNum);
+                  isLoading = false;
+                } else {
+                  sentinel.remove();
+                  if (endMessage) endMessage.style.display = "block";
+                }
+              })
+              .catch(err => {
+                console.error("Error loading posts:", err);
+                sentinel.style.display = "none";
                 isLoading = false;
-              } else {
-                sentinel.remove();
-                if (endMessage) endMessage.style.display = "block";
-              }
-            })
-            .catch(err => {
-              console.error("Error loading posts:", err);
-              sentinel.style.display = "none";
-              isLoading = false;
-            });
-        }
-      }, { rootMargin: "200px" });
+              });
+          }
+        }, { rootMargin: "200px" });
 
-      observer.observe(sentinel);
-    }
-  });
+        observer.observe(sentinel);
+      }
+    });
 </script>
 {% endblock %}

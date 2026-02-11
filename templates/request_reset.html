@@ -1,21 +1,6 @@
-{% extends "base.html" %} {% block header %}
-<header
-  class="masthead"
-  style="background-image: url('{{ url_for('static', filename='assets/img/login-bg.jpg') }}')"
->
-  <div class="container position-relative px-4 px-lg-5">
-    <div class="row gx-4 gx-lg-5 justify-content-center">
-      <div class="col-md-10 col-lg-8 col-xl-7">
-        <div class="page-heading">
-          <h1>Reset Password</h1>
-        </div>
-      </div>
-    </div>
-  </div>
-</header>
-{% endblock %} {% block content %}
+{% extends "base.html" %} {% block styles %}
 <style>
-  /* Making footer links stand out (Consistency with login.html) */
+  /* Consistent Footer Link Styling */
   .auth-link {
     color: #0085a1; /* Your theme teal */
     font-weight: 600;
@@ -33,7 +18,22 @@
     font-size: 0.95rem;
   }
 </style>
-
+{% endblock %} {% block header %}
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/login-bg.jpg') }}')"
+>
+  <div class="container position-relative px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        <div class="page-heading">
+          <h1>Reset Password</h1>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %} {% block content %}
 <main class="mb-4">
   <div class="container">
     <div class="row justify-content-center">
@@ -128,21 +128,21 @@
 </main>
 {% endblock %} {% block scripts %}
 <script>
-  // --- AUTO-SCROLL TO ERRORS/ALERTS ---
+  // --- UPDATED: PRECISE AUTO-SCROLL TO ERRORS ---
+  // Matches make_post.html logic for consistency
   document.addEventListener("DOMContentLoaded", () => {
-    // Target the main container
-    const mainContainer = document.querySelector("main");
+    // Priority 1: Flash Messages (Global Alerts)
+    const flashMessage = document.querySelector(".alert");
 
-    // Check for Flash Messages (Bootstrap Alerts)
-    const hasFlashMessages = document.querySelector(".alert");
+    // Priority 2: Specific Form Field Errors (Look for .text-danger)
+    const formError = document.querySelector(".text-danger");
 
-    // Check for Validation Errors
-    const hasValidationErrors = document.querySelector(".text-danger");
+    // Determine target
+    const target = flashMessage || formError;
 
-    // If the container exists AND (we have an alert OR a form error)
-    if (mainContainer && (hasFlashMessages || hasValidationErrors)) {
-      // Smoothly scroll to the top so the message is center stage
-      mainContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target) {
+      // Scroll the SPECIFIC element into center view
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   });
 </script>

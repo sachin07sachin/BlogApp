@@ -40,6 +40,7 @@ from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, tex
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from urllib.parse import urlparse
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
@@ -92,6 +93,11 @@ class Config:
     
     # Third Party
     TINYMCE_API_KEY = os.environ.get("TINYMCE_API_KEY")
+
+    # --- NEW: Upload Configuration ---
+    # Define where uploads go. 'static/uploads' is easiest for serving.
+    UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static/uploads')
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB Max Size
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -237,7 +243,7 @@ class BlogPost(db.Model):
         default=lambda: datetime.now(timezone.utc)
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    img_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    img_url: Mapped[str] = mapped_column(String(2048), nullable=False)
 
     # Moderation
     can_comment: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
@@ -449,10 +455,39 @@ def clean_html(text):
         strip=True
     )
 
+@app.template_filter('normalize_whitespace')
+def normalize_whitespace_filter(text):
+    """
+    Jinja filter that mimics the JavaScript 'flatten' logic.
+    Converts 'Hi   \n\n  There' -> 'Hi There'
+    """
+    if not text:
+        return ""
+    return " ".join(text.split())
+
 def get_gravatar_url(email, size=200):
     """Generates a Gravatar URL for the given email."""
     email_hash = hashlib.md5(email.lower().strip().encode('utf-8')).hexdigest()
     return f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d=retro"
+
+def save_picture(form_picture):
+    """
+    Saves an uploaded picture to the static/uploads folder.
+    Returns the relative path to be stored in the DB.
+    """
+    random_hex = uuid.uuid4().hex
+    _, f_ext = os.path.splitext(form_picture.filename)
+    picture_fn = random_hex + f_ext
+    
+    # Ensure directory exists
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        os.makedirs(app.config['UPLOAD_FOLDER'])
+        
+    picture_path = os.path.join(app.config['UPLOAD_FOLDER'], picture_fn)
+    form_picture.save(picture_path)
+    
+    # Return path relative to 'static' folder so url_for('static', filename=...) works
+    return f"uploads/{picture_fn}"
 
 def anonymize_user_data(user):
     """
@@ -505,6 +540,15 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
     """
     with app.app_context():
         try:
+
+            # --- NEW: Smart Flattening (The "Inbox Style" Fix) ---
+            # This turns: "Hi \n\n\n Hello" into: "Hi Hello"
+            clean_body = " ".join(body.split())
+            
+            # Truncate to ~200 chars (Safe limit for push payloads)
+            if len(clean_body) > 200:
+                clean_body = clean_body[:200] + '...'
+            # -----------------------------
             # A. SAVE TO DATABASE (History)
             if category != 'chat':
                 with safe_commit():
@@ -529,7 +573,7 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                 # --- MODERN PAYLOAD STRUCTURE ---
                 payload_data = {
                     "title": title,
-                    "body": body,
+                    "body": clean_body,
                     "url": link_url,
                     "timestamp": timestamp_ms,
                     # 1. Avatar of the person causing the action (or App Logo)
@@ -1650,7 +1694,7 @@ def show_post(post_id):
             # Log error but do not disrupt the user
             logger.error(f"Notification Error for comment {new_comment.id}: {e}")
 
-        flash("Comment Posted", "comment_success")
+        # flash("Comment Posted", "comment_success")
         return redirect(url_for("show_post", post_id=post.id,comment_id=new_comment.id, _anchor=f"comment-{new_comment.id}"))
     # =========================================================
     # NEW LOGIC: COMMENT PAGINATION & DEEP LINKING
@@ -1742,6 +1786,29 @@ def add_new_post():
             flash("A post with this title already exists. Please choose a different title.", "warning")
             # This will now show up because we fixed make-post.html!
             return render_template("make-post.html", form=form)
+        
+        # IMAGE LOGIC (Enforce "One or the Other")
+        final_img_url = None
+
+        # A. File Upload (Priority)
+        if form.img_file.data:
+            try:
+                filename = save_picture(form.img_file.data)
+                final_img_url = url_for('static', filename=filename, _external=True)
+            except Exception as e:
+                logger.error(f"Image upload failed: {e}")
+                flash("Failed to upload image.", "danger")
+                return render_template("make-post.html", form=form)
+        
+        # B. URL Input
+        elif form.img_url.data:
+            final_img_url = form.img_url.data
+        
+        # C. VALIDATION FAILURE (Neither provided)
+        else:
+            flash("You must provide an image! Please upload a file or paste a URL.", "danger")
+            # Stop here and re-render the form
+            return render_template("make-post.html", form=form)
 
         # 2. SAVE POST (Database Transaction)
         # We isolate the DB save so we know exactly when the post is safe.
@@ -1751,7 +1818,7 @@ def add_new_post():
                     title=form.title.data,
                     subtitle=form.subtitle.data,
                     body=clean_html(form.body.data),
-                    img_url=form.img_url.data,
+                    img_url=final_img_url,
                     author=current_user,
                     can_comment=form.can_comment.data
                 )
@@ -1838,6 +1905,15 @@ def edit_post(post_id):
             with safe_commit():
                 form.populate_obj(post)
                 post.body = clean_html(form.body.data)
+                # Handle Image Update
+                # Only update if a NEW file is uploaded or a NEW url is provided
+                if form.img_file.data:
+                    filename = save_picture(form.img_file.data)
+                    post.img_url = url_for('static', filename=filename, _external=True)
+                elif form.img_url.data and form.img_url.data != post.img_url:
+                    post.img_url = form.img_url.data
+                
+                # Note: If fields are empty, we keep the existing post.img_url
             # Changes safely saved
         
         except Exception as e:
@@ -1882,9 +1958,14 @@ def delete_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     target_username = post.author.username
     if current_user.id == post.author_id:
-        with safe_commit():
-            db.session.delete(post)
-        flash("Post deleted.", "info")
+        try:
+            with safe_commit():
+                db.session.delete(post)
+            flash("Post deleted.", "info")
+        except Exception as e:
+            # safe_commit logs the specific DB error, but we log context here too
+            logger.error(f"User {current_user.id} failed to delete post {post.id}: {e}")
+            flash("There was an issue deleting the post. Please try again.", "danger")
         return redirect(url_for("user_profile", username=target_username))
     elif current_user.role == "admin":
         return redirect(url_for("admin_delete_post", post_id=post.id))
@@ -2029,8 +2110,13 @@ def delete_comment(comment_id):
     post_id = comment_to_delete.post_id
     
     if comment_to_delete.comment_author.id == current_user.id or current_user.role == "admin":
-        with safe_commit():
-            db.session.delete(comment_to_delete)
+        try:
+            with safe_commit():
+                db.session.delete(comment_to_delete)
+            flash("Comment deleted.", "comment_success")
+        except Exception as e:
+            logger.error(f"Error deleting comment {comment_id}: {e}")
+            flash("Could not delete comment. Please try again.", "comment_danger")
         return redirect(url_for('show_post', post_id=post_id, _anchor='comment-form-section'))
     else:
         flash("You are not authorized to delete this comment.")
@@ -2179,9 +2265,10 @@ def chat(user_id):
             and_(Message.sender_id == current_user.id, Message.recipient_id == user_id),
             and_(Message.sender_id == user_id, Message.recipient_id == current_user.id)
         )
-    ).order_by(Message.timestamp.asc())
+    ).order_by(Message.timestamp.desc()).limit(10)
     
     history = db.session.scalars(history_stmt).all()
+    history.reverse()
     
     unread_updates = False
     for msg in history:
@@ -2199,14 +2286,52 @@ def chat(user_id):
 
     return render_template('chat.html', form=form, recipient=recipient, history=history, can_message=can_message)
 
+# --- NEW ROUTE: Infinite Scroll API ---
+@app.route('/api/chat/<int:user_id>/history')
+@login_required
+def get_chat_history(user_id):
+    # Get 'page' from URL (e.g., ?page=2), default to 1
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+
+    stmt = db.select(Message).where(
+        or_(
+            and_(Message.sender_id == current_user.id, Message.recipient_id == user_id),
+            and_(Message.sender_id == user_id, Message.recipient_id == current_user.id)
+        )
+    ).order_by(Message.timestamp.desc()) # Newest first
+
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    messages = []
+    for msg in pagination.items:
+        messages.append({
+            'body': msg.body,
+            'timestamp': msg.timestamp.isoformat(),
+            'sender_id': msg.sender_id,
+            'is_read': msg.is_read,
+            'sender_email': msg.sender.email # Needed for Avatar logic on frontend
+        })
+    
+    return jsonify({
+        'messages': messages, 
+        'has_next': pagination.has_next,
+        'next_page': pagination.next_num
+    })
+
 @app.route('/message/delete/<int:message_id>', methods=['POST'])
 @login_required
 def delete_message(message_id):
     msg = db.session.get(Message, message_id)
     if msg:
         if msg.sender_id == current_user.id or current_user.role == "admin":
-            with safe_commit():
-                db.session.delete(msg)
+            try:
+                with safe_commit():
+                    db.session.delete(msg)
+                # flash("Message deleted.", "success")
+            except Exception as e:
+                logger.error(f"Error deleting message {message_id}: {e}")
+                flash("Could not delete message.", "danger")
         else:
             flash("You cannot delete this message.", "danger")
     return redirect(request.referrer or url_for('inbox'))
@@ -2400,6 +2525,11 @@ def handle_socket_message(data):
                 'timestamp': msg.timestamp.isoformat(),
                 'avatar': current_user.email 
             }, room=f"user_{recipient_id}")
+
+            # Calculate & Emit Unread Count to Recipient
+            # We recalculate strictly from DB to be 100% accurate
+            unread_count = recipient.new_messages()
+            socketio.emit('unread_count_update', {'count': unread_count}, room=f"user_{recipient_id}")
             
             emit('message_sent_confirmation', {
                 'temp_id': data.get('temp_id'),
@@ -2447,6 +2577,11 @@ def handle_mark_read(data):
                 .values(is_read=True)
             )
         socketio.emit('messages_read_update', {'reader_id': current_user.id}, room=f"user_{sender_id}")
+
+        # Update Reader's Own Badge (Reduce the count)
+        # Since we just marked them read, the count will decrease.
+        new_count = current_user.new_messages()
+        socketio.emit('unread_count_update', {'count': new_count}, room=f"user_{current_user.id}")
     except Exception as e:
         logger.error(f"Mark read failed: {e}")
 

@@ -129,21 +129,21 @@
 </main>
 {% endblock %} {% block scripts %}
 <script>
-  // --- AUTO-SCROLL TO ERRORS/ALERTS ---
+  // --- UPDATED: PRECISE AUTO-SCROLL TO ERRORS ---
+  // Matches make_post.html logic for consistency
   document.addEventListener("DOMContentLoaded", () => {
-    // Target the main container to ensure we scroll high enough to see the alert
-    const mainContainer = document.querySelector("main");
+    // Priority 1: Flash Messages (Global Alerts)
+    const flashMessage = document.querySelector(".alert");
 
-    // Check for Flash Messages (Bootstrap Alerts)
-    const hasFlashMessages = document.querySelector(".alert");
+    // Priority 2: Specific Form Field Errors (Look for .text-danger)
+    const formError = document.querySelector(".text-danger");
 
-    // Check for Validation Errors (Text Danger under email field)
-    const hasValidationErrors = document.querySelector(".text-danger");
+    // Determine target
+    const target = flashMessage || formError;
 
-    // If the container exists AND (we have an alert OR a form error)
-    if (mainContainer && (hasFlashMessages || hasValidationErrors)) {
-      // Smoothly scroll to the top of the main section
-      mainContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (target) {
+      // Scroll the SPECIFIC element into center view
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   });
 </script>

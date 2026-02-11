@@ -333,6 +333,32 @@
       });
     </script>
 
+    <script>
+      // 1. Initialize Socket GLOBALLY once
+      // We check if it exists to be safe, but we define it here for everyone.
+      if (typeof io !== 'undefined') {
+          // Assign to window so chat.html can use it
+          window.socket = io(); 
+
+          document.addEventListener("DOMContentLoaded", function () {
+              // --- GLOBAL: Listen for Unread Count Updates ---
+              window.socket.on("unread_count_update", function(data) {
+                  const count = data.count;
+                  const badge = document.getElementById("nav-unread-badge");
+                  
+                  if (badge) {
+                      if (count > 0) {
+                          badge.innerText = count;
+                          badge.classList.remove("d-none"); 
+                      } else {
+                          badge.classList.add("d-none");
+                      }
+                  }
+              });
+          });
+      }
+    </script>
+
     {% block scripts %}{% endblock %}
   </body>
 </html>

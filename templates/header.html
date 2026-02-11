@@ -120,19 +120,17 @@
           <li class="nav-item">
             <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('inbox') }}">
                 
-                {# 1. Wrapper Span: Creates a tight box around the word "Messages" #}
+                {# Wrapper #}
                 <span class="d-inline-block position-relative">
                     Messages
                     
-                    {% if unread_count > 0 %}
-                      {# 2. The Badge: Now positioned relative to the word, not the button #}
-                      {# Removed 'style="top: 25px"' because it is no longer needed #}
-                      <span class="position-absolute top-0 start-100 translate-middle-y badge rounded-pill bg-danger" 
-                            style="font-size: 0.6rem; margin-top: -2px;">
+                    {# BADGE: Added ID 'nav-unread-badge' and 'd-none' logic #}
+                    <span id="nav-unread-badge" 
+                          class="position-absolute top-0 start-100 translate-middle-y badge rounded-pill bg-danger {% if unread_count == 0 %}d-none{% endif %}" 
+                          style="font-size: 0.6rem; margin-top: -2px;">
                           {{ unread_count }}
                           <span class="visually-hidden">unread messages</span>
-                      </span>
-                    {% endif %}
+                    </span>
                 </span>
 
             </a>

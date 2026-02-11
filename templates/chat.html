@@ -1,697 +1,992 @@
 {% extends "base.html" %} {% block title %}Chat with {{ recipient.name }}{%
-  endblock %} {% block header %}
-  <link
-    href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap"
-    rel="stylesheet"
-  />
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
-  />
-  
-  <style>
-    /* --- THEME VARIABLES --- */
-    :root {
-      --sent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      --received-bg: #ffffff;
-      --received-text: #111b21;
-      --sent-text: #ffffff;
-  
-      --time-sent: rgba(255, 255, 255, 0.75);
-      --time-rec: #667781;
-  
-      --bg-pattern: radial-gradient(#e0e0e0 2px, transparent 2px);
+endblock %} {% block header %}
+<link
+  href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+/>
+
+<style>
+  /* --- THEME VARIABLES --- */
+  :root {
+    --sent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --received-bg: #ffffff;
+    --received-text: #111b21;
+    --sent-text: #ffffff;
+
+    --time-sent: rgba(255, 255, 255, 0.75);
+    --time-rec: #667781;
+
+    --bg-pattern: radial-gradient(#e0e0e0 2px, transparent 2px);
+  }
+
+  body {
+    font-family: "Poppins", sans-serif;
+    background-color: #eef2f5;
+  }
+
+  /* --- CARD LAYOUT --- */
+  .chat-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    position: relative;
+  }
+
+  /* --- HEADER --- */
+  .chat-header {
+    padding: 10px 20px;
+    background: #ffffff;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+    height: 65px;
+  }
+
+  .profile-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  .avatar-header {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .user-info h5 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #111b21;
+  }
+  .status-text {
+    margin: 0;
+    font-size: 12px;
+    color: #667781;
+  }
+
+  .status-text.typing {
+    color: #667eea;
+    font-weight: 600;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0% {
+      opacity: 0.5;
     }
-  
-    body {
-      font-family: "Poppins", sans-serif;
-      background-color: #eef2f5;
-    }
-  
-    /* --- CARD LAYOUT --- */
-    .chat-card {
-      background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-      overflow: hidden;
-      height: 80vh;
-      display: flex;
-      flex-direction: column;
-      border: 1px solid rgba(0, 0, 0, 0.05);
-      position: relative;
-    }
-  
-    /* --- HEADER --- */
-    .chat-header {
-      padding: 10px 20px;
-      background: #ffffff;
-      border-bottom: 1px solid #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      z-index: 10;
-      height: 65px;
-    }
-  
-    .profile-group {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-    }
-  
-    .avatar-header {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-  
-    .user-info h5 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 600;
-      color: #111b21;
-    }
-    .status-text {
-      margin: 0;
-      font-size: 12px;
-      color: #667781;
-    }
-  
-    .status-text.typing {
-      color: #667eea;
-      font-weight: 600;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-      0% {
-        opacity: 0.5;
-      }
-      50% {
-        opacity: 1;
-      }
-      100% {
-        opacity: 0.5;
-      }
-    }
-  
-    /* --- CHAT BODY --- */
-    .chat-body {
-      flex: 1;
-      overflow-y: auto;
-      
-      /* FIX 1: Fixed padding prevents text jumping when scrollbar appears */
-      padding: 20px; 
-      
-      background-color: #f7f7f7;
-      background-image: var(--bg-pattern);
-      background-size: 24px 24px;
-  
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-      
-      /* FIX 2: Reserves space for scrollbar so it doesn't break borders */
-      scrollbar-gutter: stable;
-    }
-  
-    .chat-body::-webkit-scrollbar {
-      width: 5px;
-    }
-    .chat-body::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
-      border-radius: 10px;
-    }
-  
-    /* --- MESSAGES --- */
-    .message-wrapper {
-      display: flex;
-      align-items: flex-end;
-      margin-bottom: 2px;
-      width: fit-content;
-      max-width: 75%;
-    }
-  
-    .message-wrapper.sent {
-      align-self: flex-end;
-      flex-direction: row-reverse;
-    }
-  
-    .message-wrapper.received {
-      align-self: flex-start;
-    }
-  
-    .avatar-chat {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin-bottom: 4px;
-      flex-shrink: 0;
-      margin-left: 8px;
-      margin-right: 8px;
-    }
-  
-    /* --- BUBBLES --- */
-    .msg-bubble {
-      padding: 6px 10px 6px 10px;
-      border-radius: 14px;
-      font-size: 14.5px;
-      line-height: 1.4;
-      position: relative;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  
-      min-width: 60px;
-      display: flex;
-      flex-direction: column;
-    }
-  
-    .msg-text {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      margin-bottom: 2px;
-    }
-  
-    .sent .msg-bubble {
-      background: var(--sent-gradient);
-      color: var(--sent-text);
-      border-bottom-right-radius: 2px;
-    }
-  
-    .received .msg-bubble {
-      background: var(--received-bg);
-      color: var(--received-text);
-      border-bottom-left-radius: 2px;
-    }
-  
-    /* --- META INFO --- */
-    .msg-meta {
-      align-self: flex-end;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-      font-size: 10px;
-      height: 12px;
-      line-height: 1;
-      opacity: 0.8;
-    }
-  
-    .sent .msg-time {
-      color: var(--time-sent);
-    }
-    .received .msg-time {
-      color: var(--time-rec);
-    }
-  
-    .msg-tick i {
-      font-size: 13px;
-    }
-    .tick-read {
-      color: #55efc4;
-    }
-    .tick-sent {
-      color: rgba(255, 255, 255, 0.7);
-    }
-  
-    /* --- FLOATING DATE LABEL --- */
-    .floating-date-label {
-      position: absolute;
-      top: 80px;
-      left: 50%;
-      transform: translateX(-50%);
-  
-      background-color: rgba(255, 255, 255, 0.95);
-      color: #54656f;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 5px 12px;
-      border-radius: 12px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-      z-index: 1000;
-  
-      opacity: 0;
-      transition: opacity 0.2s ease-in-out;
-      pointer-events: none;
-    }
-  
-    .floating-date-label.show {
+    50% {
       opacity: 1;
     }
-  
-    /* --- STANDARD DIVIDER (Non-Sticky) --- */
-    .date-divider {
-      align-self: center;
-      background-color: #ffffff;
-      border: 1px solid #f0f0f0;
-      color: #54656f;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 4px 12px;
-      border-radius: 12px;
-      margin: 15px 0;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    100% {
+      opacity: 0.5;
     }
-  
-    /* --- FOOTER --- */
-    .chat-footer {
-      background: #ffffff;
-      padding: 10px 15px;
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      border-top: 1px solid #f0f0f0;
-    }
-  
-    .input-wrapper {
-      flex: 1;
-      background: #f0f2f5;
-      border-radius: 24px;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-    }
-  
-    #messageInput {
-      width: 100%;
-      border: none;
-      outline: none;
-      background: transparent;
-      resize: none;
-      max-height: 100px;
-      overflow-y: auto;
-      font-family: "Poppins", sans-serif;
-      font-size: 14px;
-      padding: 0;
-      margin: 0;
-      line-height: 1.4;
-    }
-  
-    .btn-send-round {
-      background: var(--sent-gradient);
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      border: none;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      cursor: pointer;
-      transition: transform 0.2s;
-      box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
-      flex-shrink: 0;
-    }
-    .btn-send-round:active {
-      transform: scale(0.95);
-    }
-  </style>
-  
-  <header
-    class="masthead"
-    style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}'); padding-top: 100px; padding-bottom: 50px;"
-  >
-    <div class="container position-relative px-4 px-lg-5">
-      <div class="row gx-4 gx-lg-5 justify-content-center">
-        <div class="col-md-10 col-lg-8 col-xl-7">
-          <div class="text-center text-white">
-            <h1>Chat</h1>
-            <span class="subheading">Connect with the community</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </header>
-  {% endblock %} {% block content %}
-  <div class="container px-4" style="margin-bottom: 50px; margin-top: -30px">
-    <div class="row justify-content-center">
-      <div class="col-md-11 col-lg-9">
-        <div class="chat-card">
-          <div class="chat-header">
-            <div
-              class="profile-group"
-              onclick="window.location.href='{{ url_for('user_profile', username=recipient.username) }}'"
-            >
-              <img src="{{ recipient.email | gravatar }}" class="avatar-header" />
-              <div class="user-info ms-3">
-                <h5>{{ recipient.name }}</h5>
-                <p class="status-text" id="userStatus">
-                  @{{ recipient.username }}
-                </p>
-              </div>
-            </div>
-          </div>
-  
-          <div id="floatingDateLabel" class="floating-date-label">Today</div>
-  
-          <div class="chat-body" id="chatHistory">
-            {% set ns = namespace(last_date=None) %} {% for msg in history %} {%
-            set msg_date = msg.timestamp.strftime('%Y-%m-%d') %} {% if
-            ns.last_date != msg_date %}
-            <div class="date-divider">
-              <span class="date-label" data-date="{{ msg_date }}"
-                >{{ msg_date }}</span
-              >
-            </div>
-            {% set ns.last_date = msg_date %} {% endif %}
-  
-            <div
-              class="message-wrapper {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}"
-              data-timestamp="{{ msg.timestamp.isoformat() }}"
-            >
-              <img src="{{ msg.sender.email | gravatar }}" class="avatar-chat" />
-  
-              <div class="msg-bubble">
-                <span class="msg-text">{{ msg.body }}</span>
-                <div class="msg-meta">
-                  <span
-                    class="msg-time local-time"
-                    data-utc="{{ msg.timestamp.isoformat() }}"
-                  ></span>
-                  {% if msg.sender_id == current_user.id %}
-                  <span class="msg-tick">
-                    {% if msg.is_read %}
-                    <i class="bi bi-check2-all tick-read" title="Read"></i>
-                    {% else %}
-                    <i class="bi bi-check2 tick-sent" title="Delivered"></i>
-                    {% endif %}
-                  </span>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          
-          {% if can_message %}
-          <div class="chat-footer">
-            <form id="chatForm" style="flex: 1">
-              <div class="input-wrapper">
-                <textarea
-                  id="messageInput"
-                  rows="1"
-                  placeholder="Type a message..."
-                ></textarea>
-              </div>
-            </form>
-  
-            <button
-              type="submit"
-              form="chatForm"
-              class="btn-send-round"
-              id="sendBtn"
-            >
-              <i class="bi bi-send-fill"></i>
-            </button>
-          </div>
-          {% else %}
-          <div class="p-3 text-center bg-light border-top text-muted small">
-            <i class="bi bi-lock-fill me-1"></i> 
-            {% if recipient.name == "Deleted User" %}
-                This account has been deleted. You cannot reply to this conversation.
-            {% else %}
-                This user does not accept private messages.
-            {% endif %}
-          </div>
-          {% endif %}
+  }
+
+  /* --- CHAT BODY --- */
+  .chat-body {
+    flex: 1;
+    overflow-y: auto;
+
+    /* FIX 1: Fixed padding prevents text jumping when scrollbar appears */
+    padding: 20px;
+
+    background-color: #f7f7f7;
+    background-image: var(--bg-pattern);
+    background-size: 24px 24px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+
+    /* FIX 2: Reserves space for scrollbar so it doesn't break borders */
+    scrollbar-gutter: stable;
+  }
+
+  .chat-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .chat-body::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+  }
+
+  /* --- MESSAGES --- */
+  .message-wrapper {
+    display: flex;
+    align-items: flex-end;
+    margin-bottom: 2px;
+    width: fit-content;
+    max-width: 75%;
+  }
+
+  .message-wrapper.sent {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .message-wrapper.received {
+    align-self: flex-start;
+  }
+
+  .avatar-chat {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+
+  /* --- BUBBLES --- */
+  .msg-bubble {
+    padding: 6px 10px 6px 10px;
+    border-radius: 14px;
+    font-size: 14.5px;
+    line-height: 1.4;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+
+    min-width: 60px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .msg-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-bottom: 2px;
+  }
+
+  .sent .msg-bubble {
+    background: var(--sent-gradient);
+    color: var(--sent-text);
+    border-bottom-right-radius: 2px;
+  }
+
+  .received .msg-bubble {
+    background: var(--received-bg);
+    color: var(--received-text);
+    border-bottom-left-radius: 2px;
+  }
+
+  /* --- META INFO --- */
+  .msg-meta {
+    align-self: flex-end;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    height: 12px;
+    line-height: 1;
+    opacity: 0.8;
+  }
+
+  .sent .msg-time {
+    color: var(--time-sent);
+  }
+  .received .msg-time {
+    color: var(--time-rec);
+  }
+
+  .msg-tick i {
+    font-size: 13px;
+  }
+  .tick-read {
+    color: #55efc4;
+  }
+  .tick-sent {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  /* --- FLOATING DATE LABEL --- */
+  .floating-date-label {
+    position: absolute;
+    top: 86px;
+    left: 49.5%;
+    transform: translateX(-50%);
+
+    align-self: center;
+    background-color: #ffffff;
+    border: 1px solid #f0f0f0;
+    color: #54656f;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 12px;
+    margin: 15px 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    z-index: 900;
+
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    pointer-events: none;
+  }
+
+  .floating-date-label.show {
+    opacity: 1;
+  }
+
+  /* --- STANDARD DIVIDER (Non-Sticky) --- */
+  .date-divider {
+    align-self: center;
+    background-color: #ffffff;
+    border: 1px solid #f0f0f0;
+    color: #54656f;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 12px;
+    margin: 15px 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  /* --- FOOTER --- */
+  .chat-footer {
+    background: #ffffff;
+    padding: 10px 15px;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  .input-wrapper {
+    flex: 1;
+    background: #f0f2f5;
+    border-radius: 24px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+  }
+
+  #messageInput {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    resize: none;
+    max-height: 100px;
+    overflow-y: auto;
+    font-family: "Poppins", sans-serif;
+    font-size: 14px;
+    padding: 0;
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .btn-send-round {
+    background: var(--sent-gradient);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+    flex-shrink: 0;
+  }
+  .btn-send-round:active {
+    transform: scale(0.95);
+  }
+
+  /* --- CUSTOM FLASH MESSAGE (Toast) --- */
+  .chat-flash-message {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    width: 90%;
+    max-width: 400px;
+    padding: 10px 15px;
+    border-radius: 8px;
+    background-color: #dc3545; /* Bootstrap Danger Red */
+    color: white;
+    font-size: 14px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    pointer-events: none;
+  }
+  .chat-flash-message.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* --- FIX: HIDE RAW DATES INITIALLY --- */
+.date-label, .local-time {
+  opacity: 0; /* Invisible by default */
+  transition: opacity 0.2s ease-in; /* Smooth fade-in */
+}
+
+/* We will add this class via JS once the data is ready */
+.date-label.loaded, .local-time.loaded {
+  opacity: 1; 
+}
+
+</style>
+
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}'); padding-top: 100px; padding-bottom: 50px;"
+>
+  <div class="container position-relative px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        <div class="text-center text-white">
+          <h1>Chat</h1>
+          <span class="subheading">Connect with the community</span>
         </div>
       </div>
     </div>
   </div>
-  
-  <audio
-    id="notifySound"
-    src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"
-    preload="auto"
-  ></audio>
-  
-  {% endblock %} {% block scripts %}
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      const socket = io();
-      const chatHistory = document.getElementById("chatHistory");
-      const chatForm = document.getElementById("chatForm");
-      const messageInput = document.getElementById("messageInput");
-      const userStatus = document.getElementById("userStatus");
-      const notifySound = document.getElementById("notifySound");
-      const floatingDateLabel = document.getElementById("floatingDateLabel");
-  
-      const RECIPIENT_ID = "{{ recipient.id }}";
-      
-      // FIX 3: Add '| safe' to prevent Jinja from escaping URL parameters
-      const CURRENT_USER_AVATAR = "{{ current_user.email | gravatar | safe }}";
-      const RECIPIENT_AVATAR = "{{ recipient.email | gravatar | safe }}";
-  
-      let typingTimeout = undefined;
-      let scrollTimeout = undefined;
-      let isTypingSignalSent = false; // FIX: Prevents Network Flooding (Lag Fix)
-  
-      // --- 1. INITIALIZATION ---
-      chatHistory.scrollTop = chatHistory.scrollHeight;
-  
-      function getFriendlyDate(dateStr) {
-        const date = new Date(dateStr);
-        const today = new Date();
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-  
-        if (date.toDateString() === today.toDateString()) return "Today";
-        if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-        return date.toLocaleDateString(undefined, {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        });
-      }
-  
-      document.querySelectorAll(".date-label").forEach((el) => {
-        el.innerText = getFriendlyDate(el.getAttribute("data-date"));
+</header>
+{% endblock %} {% block content %}
+<div class="container px-4" style="margin-bottom: 50px; margin-top: -30px">
+  <div class="row justify-content-center">
+    <div class="col-md-11 col-lg-9">
+      <div class="chat-card">
+        <div id="connectionFlash" class="chat-flash-message">
+          <i class="bi bi-wifi-off me-2"></i> Connection lost. Please check your
+          internet.
+        </div>
+
+        <div class="chat-header">
+          <div class="profile-group" id="profileGroup">
+            <img src="{{ recipient.email | gravatar }}" class="avatar-header" />
+            <div class="user-info ms-3">
+              <h5>{{ recipient.name }}</h5>
+              <p class="status-text" id="userStatus">
+                @{{ recipient.username }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div id="floatingDateLabel" class="floating-date-label">Today</div>
+
+        <div class="chat-body" id="chatHistory">
+          <div id="loadingSpinner" class="text-center w-100 py-3 mb-3 d-none">
+            <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1.5rem; height: 1.5rem; border-width: 0.2em; position: relative; z-index: 1000;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+          {% set ns = namespace(last_date=None) %} {% for msg in history %} {%
+          set msg_date = msg.timestamp.strftime('%Y-%m-%d') %} {% if
+          ns.last_date != msg_date %}
+          <div class="date-divider" data-observer-date="{{ msg.timestamp.isoformat() }}">
+            <span class="date-label" data-date="{{ msg_date }}"
+              >{{ msg_date }}</span
+            >
+          </div>
+          {% set ns.last_date = msg_date %} {% endif %}
+
+          <div
+            class="message-wrapper {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}"
+            data-timestamp="{{ msg.timestamp.isoformat() }}"
+          >
+            <img src="{{ msg.sender.email | gravatar }}" class="avatar-chat" />
+
+            <div class="msg-bubble">
+              <span class="msg-text">{{ msg.body }}</span>
+              <div class="msg-meta">
+                <span
+                  class="msg-time local-time"
+                  data-utc="{{ msg.timestamp.isoformat() }}"
+                ></span>
+                {% if msg.sender_id == current_user.id %}
+                <span class="msg-tick">
+                  {% if msg.is_read %}
+                  <i class="bi bi-check2-all tick-read" title="Read"></i>
+                  {% else %}
+                  <i class="bi bi-check2 tick-sent" title="Delivered"></i>
+                  {% endif %}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% if can_message %}
+        <div class="chat-footer">
+          <form id="chatForm" style="flex: 1">
+            <div class="input-wrapper">
+              <textarea
+                id="messageInput"
+                rows="1"
+                placeholder="Type a message..."
+              ></textarea>
+            </div>
+          </form>
+
+          <button
+            type="submit"
+            form="chatForm"
+            class="btn-send-round"
+            id="sendBtn"
+          >
+            <i class="bi bi-send-fill"></i>
+          </button>
+        </div>
+        {% else %}
+        <div class="p-3 text-center bg-light border-top text-muted small">
+          <i class="bi bi-lock-fill me-1"></i>
+          {% if recipient.name == "Deleted User" %} This account has been
+          deleted. You cannot reply to this conversation. {% else %} This user
+          does not accept private messages. {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<audio
+  id="notifySound"
+  src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"
+  preload="auto"
+></audio>
+
+{% endblock %} {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const socket = window.socket;
+    const chatHistory = document.getElementById("chatHistory");
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("messageInput");
+    const userStatus = document.getElementById("userStatus");
+    const notifySound = document.getElementById("notifySound");
+    const floatingDateLabel = document.getElementById("floatingDateLabel");
+    const profileGroup = document.getElementById("profileGroup");
+    const connectionFlash = document.getElementById("connectionFlash");
+    const loadingSpinner = document.getElementById("loadingSpinner"); // NEW: Spinner Element
+
+    const RECIPIENT_ID = "{{ recipient.id }}";
+    const CURRENT_USER_ID = "{{ current_user.id }}";
+
+    // FIX 1: Secure URL assignment (Prevent JS Injection)
+    const RECIPIENT_PROFILE_URL = "{{ url_for('user_profile', username=recipient.username) }}";
+    if (profileGroup) {
+      profileGroup.onclick = function () {
+        window.location.href = RECIPIENT_PROFILE_URL;
+      };
+    }
+
+    // FIX 3: Safe Variable Injection using '| safe'
+    const CURRENT_USER_AVATAR = "{{ current_user.email | gravatar | safe }}";
+    const RECIPIENT_AVATAR = "{{ recipient.email | gravatar | safe }}";
+
+    let typingTimeout = undefined;
+    let scrollTimeout = undefined;
+    let isTypingSignalSent = false;
+
+    // --- INFINITE SCROLL VARIABLES ---
+    let currentPage = 1;
+    let isLoadingHistory = false;
+    let hasMoreHistory = true;
+
+    // --- 1. INITIALIZATION & HELPERS ---
+    
+    function getFriendlyDate(dateStr) {
+      const date = new Date(dateStr);
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      if (date.toDateString() === today.toDateString()) return "Today";
+      if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+      return date.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
       });
-  
-      document.querySelectorAll(".local-time").forEach((el) => {
-        const utc = el.getAttribute("data-utc");
-        if (utc)
-          el.innerText = new Date(utc).toLocaleTimeString([], {
+    }
+
+    // New Helper: Standardized Date Divider Creation
+    function createDateDivider(isoDateString) {
+      const div = document.createElement("div");
+      div.className = "date-divider";
+      div.setAttribute("data-observer-date", isoDateString);
+      // Use getFriendlyDate to ensure "Today" / "Yesterday" logic is applied
+      div.innerHTML = `<span class="date-label" data-date="${isoDateString}">${getFriendlyDate(isoDateString)}</span>`;
+      return div;
+    }
+
+    // Helper: Format YYYY-MM-DD for strict comparison (Fixes Midnight Edge Case)
+    function getComparisonDate(dateObj) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+  }
+
+    // Format existing server-side rendered dates
+    document.querySelectorAll(".date-label").forEach((el) => {
+      el.innerText = getFriendlyDate(el.getAttribute("data-date"));
+      el.classList.add("loaded");
+    });
+
+    document.querySelectorAll(".local-time").forEach((el) => {
+      const utc = el.getAttribute("data-utc");
+      if (utc)
+        el.innerText = new Date(utc)
+          .toLocaleTimeString([], {
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
-          }).toUpperCase();;
-      });
-  
-      // --- 2. IMPROVED SCROLL LOGIC ---
-      chatHistory.addEventListener("scroll", function () {
-        floatingDateLabel.classList.add("show");
-  
-        const containerTop = chatHistory.getBoundingClientRect().top;
-        const children = chatHistory.children;
-        const scanOffset = 80;
-  
-        for (let child of children) {
-          if (!child.classList.contains("message-wrapper")) continue;
-  
-          const rect = child.getBoundingClientRect();
-  
-          if (rect.bottom > containerTop + scanOffset) {
-            const ts = child.getAttribute("data-timestamp");
-            if (ts) {
-              const newLabel = getFriendlyDate(ts);
-              if (floatingDateLabel.innerText !== newLabel) {
-                floatingDateLabel.innerText = newLabel;
+          })
+          .toUpperCase();
+          el.dataset.localized = "true";
+          el.classList.add("loaded");
+    });
+
+    // --- SCROLL INITIALIZATION ---
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+
+    // FIX: AUTO-FILL CHECK
+    // If messages aren't enough to create a scrollbar, load more immediately.
+    setTimeout(() => {
+        if (chatHistory.scrollHeight <= chatHistory.clientHeight && hasMoreHistory) {
+            console.log("Content too short. Auto-loading history...");
+            loadOlderMessages();
+        }
+    }, 100);
+
+    // --- 2. YOUR ORIGINAL SCROLL LOGIC (Manual Calculation) ---
+    chatHistory.addEventListener("scroll", function () {
+      floatingDateLabel.classList.add("show");
+
+      const containerTop = chatHistory.getBoundingClientRect().top;
+      const children = chatHistory.children;
+      const scanOffset = 80;
+
+      for (let child of children) {
+        // FIX: Skip spinner in scroll scanning
+        if (child.id === 'loadingSpinner') continue;
+        if (!child.classList.contains("message-wrapper")) continue;
+
+        const rect = child.getBoundingClientRect();
+
+        if (rect.bottom > containerTop + scanOffset) {
+          const ts = child.getAttribute("data-timestamp");
+          if (ts) {
+            const newLabel = getFriendlyDate(ts);
+            if (floatingDateLabel.innerText !== newLabel) {
+              floatingDateLabel.innerText = newLabel;
+            }
+          }
+          break;
+        }
+      }
+
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        floatingDateLabel.classList.remove("show");
+      }, 1000);
+      
+      // Trigger Infinite Scroll logic if near top
+      if (chatHistory.scrollTop < 50) {
+        loadOlderMessages();
+      }
+    });
+
+    // --- 3. INFINITE SCROLL LOGIC (Robust History Dividers + Spinner) ---
+    async function loadOlderMessages() {
+      if (isLoadingHistory || !hasMoreHistory) return;
+      isLoadingHistory = true;
+
+      // 1. Show Spinner
+      if (loadingSpinner) loadingSpinner.classList.remove('d-none');
+
+      const oldScrollHeight = chatHistory.scrollHeight;
+      const nextPage = currentPage + 1;
+
+      try {
+        const response = await fetch(
+          `/api/chat/${RECIPIENT_ID}/history?page=${nextPage}`,
+        );
+        const data = await response.json();
+
+        if (data.messages && data.messages.length > 0) {
+          // API returns Newest -> Oldest
+          data.messages.forEach((msg) => {
+            const type =
+              String(msg.sender_id) === CURRENT_USER_ID ? "sent" : "received";
+            let avatar =
+              type === "sent" ? CURRENT_USER_AVATAR : RECIPIENT_AVATAR;
+
+            const msgEl = createMessageElement(
+              msg.body,
+              type,
+              avatar,
+              null,
+              msg.timestamp,
+              msg.is_read ? "read" : "sent",
+            );
+
+            // --- HISTORY DIVIDER LOGIC ---
+            // Determine the actual top message/divider, IGNORING the spinner
+            let currentTop = chatHistory.firstElementChild;
+            if (currentTop && currentTop.id === "loadingSpinner") {
+                currentTop = currentTop.nextElementSibling;
+            }
+
+            if (currentTop) {
+              // 1. If Top is a DIVIDER, check if we fit under it
+              if (currentTop.classList.contains("date-divider")) {
+                const rawDate = currentTop.getAttribute("data-observer-date");
+                
+                // CRITICAL SAFETY CHECK: Prevent "split of null" crash
+                if (rawDate) {
+                    const dividerDate = rawDate.split("T")[0];
+                    const msgDate = msg.timestamp.split("T")[0];
+
+                    if (dividerDate === msgDate) {
+                        // Same date. Insert message AFTER divider.
+                        if (currentTop.nextSibling) {
+                            chatHistory.insertBefore(msgEl, currentTop.nextSibling);
+                        } else {
+                            chatHistory.appendChild(msgEl);
+                        }
+                        return;
+                    }
+                }
+              }
+
+              // 2. If Top is a MESSAGE, check if we need a divider between them
+              if (currentTop.classList.contains("message-wrapper")) {
+                const topTs = currentTop.getAttribute("data-timestamp");
+                if (topTs) {
+                    const topDate = topTs.split("T")[0];
+                    const msgDate = msg.timestamp.split("T")[0];
+
+                    if (topDate !== msgDate) {
+                        const div = createDateDivider(topTs);
+                        chatHistory.insertBefore(div, currentTop);
+                    }
+                }
               }
             }
-            break;
-          }
-        }
-  
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          floatingDateLabel.classList.remove("show");
-        }, 1000);
-      });
-  
-      // --- 3. OPTIMIZED INPUT HANDLERS (LAG FIX) ---
-      messageInput.addEventListener("input", function () {
-        this.style.height = "auto";
-        const newH = this.scrollHeight;
-        const maxH = 120;
-        this.style.height = (newH > maxH ? maxH : newH) + "px";
-        this.style.overflowY = newH > maxH ? "auto" : "hidden";
-  
-        if (this.value.trim().length > 0) {
-          // Throttling Logic: Only emit if signal hasn't been sent recently
-          // This prevents firing 500 requests for a single paragraph
-          if (!isTypingSignalSent) {
-            socket.emit("typing", { recipient_id: RECIPIENT_ID });
-            isTypingSignalSent = true;
-          }
-          
-          if (typingTimeout) clearTimeout(typingTimeout);
-          typingTimeout = setTimeout(() => {
-            socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-            isTypingSignalSent = false; // Reset to allow next signal
-          }, 2000);
-        } else {
-          // If box is cleared, stop immediately
-          if (isTypingSignalSent) {
-             socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-             isTypingSignalSent = false;
-          }
-        }
-      });
-  
-      messageInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          chatForm.dispatchEvent(new Event("submit"));
-        }
-      });
-  
-      // --- 4. SOCKET EVENTS (Optimized Order) ---
-      chatForm.addEventListener("submit", function (e) {
-        e.preventDefault();
-        const text = messageInput.value.trim();
-        if (!text) return;
-  
-        const tempId = Date.now();
-        
-        // 1. Optimistic UI Update (Immediate feedback before network)
-        addMessageToUI(text, "sent", CURRENT_USER_AVATAR, tempId, null, "clock");
-        
-        // 2. Clear input immediately so user feels no lag
-        messageInput.value = "";
-        messageInput.style.height = "auto";
-        chatHistory.scrollTop = chatHistory.scrollHeight;
 
-        // 3. Network operations (Happen in background)
-        socket.emit("send_message", {
-          recipient_id: RECIPIENT_ID,
-          body: text,
-          temp_id: tempId,
-        });
-  
+            // INSERTION: Insert after spinner (so spinner stays at top)
+            if (loadingSpinner && loadingSpinner.parentNode === chatHistory) {
+                 // Insert immediately after spinner (effectively top of messages)
+                 if (loadingSpinner.nextSibling) {
+                     chatHistory.insertBefore(msgEl, loadingSpinner.nextSibling);
+                 } else {
+                     chatHistory.appendChild(msgEl);
+                 }
+            } else {
+                // Fallback if no spinner found
+                chatHistory.insertBefore(msgEl, chatHistory.firstChild);
+            }
+          });
+
+          // Final Clean: Add divider for the oldest loaded message if needed
+          let finalTop = chatHistory.firstElementChild;
+          if (finalTop && finalTop.id === "loadingSpinner") {
+              finalTop = finalTop.nextElementSibling;
+          }
+
+          if (finalTop && finalTop.classList.contains("message-wrapper")) {
+            const ts = finalTop.getAttribute("data-timestamp");
+            if (ts) {
+                const div = createDateDivider(ts);
+                chatHistory.insertBefore(div, finalTop);
+            }
+          }
+
+          currentPage = nextPage;
+          hasMoreHistory = data.has_next;
+          
+          // Maintain Scroll Position
+          const newScrollHeight = chatHistory.scrollHeight;
+          chatHistory.scrollTop = newScrollHeight - oldScrollHeight;
+          
+        } else {
+          hasMoreHistory = false;
+        }
+      } catch (err) {
+        console.error("History load error", err);
+      } finally {
+        isLoadingHistory = false;
+        
+        // 2. Hide Spinner
+        if (loadingSpinner) loadingSpinner.classList.add('d-none');
+        
+        // RECURSIVE CHECK: Auto-fill if screen still not full
+        if (chatHistory.scrollHeight <= chatHistory.clientHeight && hasMoreHistory) {
+            loadOlderMessages();
+        }
+      }
+    }
+
+    // --- 4. INPUT HANDLERS ---
+    messageInput.addEventListener("input", function () {
+      this.style.height = "auto";
+      const newH = this.scrollHeight;
+      const maxH = 120;
+      this.style.height = (newH > maxH ? maxH : newH) + "px";
+      this.style.overflowY = newH > maxH ? "auto" : "hidden";
+
+      if (this.value.trim().length > 0) {
+        if (!isTypingSignalSent) {
+          socket.emit("typing", { recipient_id: RECIPIENT_ID });
+          isTypingSignalSent = true;
+        }
         if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+          socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+          isTypingSignalSent = false;
+        }, 2000);
+      } else {
         if (isTypingSignalSent) {
-            socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-            isTypingSignalSent = false;
+          socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+          isTypingSignalSent = false;
         }
+      }
+    });
+
+    messageInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event("submit"));
+      }
+    });
+
+    // --- 5. SOCKET EVENTS & SEND LOGIC ---
+    function showConnectionError() {
+      connectionFlash.classList.add("show");
+      setTimeout(() => {
+        connectionFlash.classList.remove("show");
+      }, 3000);
+    }
+
+    // Shared logic to check/append date divider for NEW messages
+    function appendDateDividerIfNeeded() {
+      const allDividers = document.querySelectorAll(".date-divider");
+      const lastDivider =
+        allDividers.length > 0 ? allDividers[allDividers.length - 1] : null;
+
+      const todayIso = getComparisonDate(new Date()); // YYYY-MM-DD
+      let lastDividerDate = null;
+
+      if (lastDivider) {
+        const rawDate = lastDivider.getAttribute("data-observer-date");
+        // Safety check
+        if (rawDate) lastDividerDate = rawDate.split("T")[0];
+      }
+
+      // FIX: Compare strict Dates, not Text "Today"
+      if (lastDividerDate !== todayIso) {
+        const div = createDateDivider(new Date().toISOString());
+        chatHistory.appendChild(div);
+      }
+    }
+
+    chatForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      // FIX 2: Check Connection & Show Flash
+      if (!socket.connected) {
+        showConnectionError();
+        return;
+      }
+
+      const text = messageInput.value.trim();
+      if (!text) return;
+
+      const tempId = Date.now();
+
+      // 1. Check/Add Divider FIRST
+      appendDateDividerIfNeeded();
+
+      // 2. Add Message
+      const msgEl = createMessageElement(
+        text,
+        "sent",
+        CURRENT_USER_AVATAR,
+        tempId,
+        null,
+        "clock",
+      );
+      chatHistory.appendChild(msgEl);
+
+      messageInput.value = "";
+      messageInput.style.height = "auto";
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+
+      socket.emit("send_message", {
+        recipient_id: RECIPIENT_ID,
+        body: text,
+        temp_id: tempId,
       });
-  
-      socket.on("new_message", function (data) {
-        if (String(data.sender_id) === RECIPIENT_ID) {
-          addMessageToUI(
-            data.body,
-            "received",
-            RECIPIENT_AVATAR,
-            null,
-            data.timestamp,
-          );
-          notifySound.play().catch((e) => console.log("Interact first"));
-          chatHistory.scrollTop = chatHistory.scrollHeight;
-          socket.emit("mark_read", { sender_id: RECIPIENT_ID });
-        }
-      });
-  
-      socket.on("message_sent_confirmation", function (data) {
-        const icon = document.getElementById(`tick-${data.temp_id}`);
-        if (icon) icon.className = "bi bi-check2 tick-sent";
-      });
-  
-      socket.on("messages_read_update", function (data) {
-        document.querySelectorAll(".tick-sent, .bi-clock").forEach((icon) => {
+
+      if (typingTimeout) clearTimeout(typingTimeout);
+      if (isTypingSignalSent) {
+        socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+        isTypingSignalSent = false;
+      }
+    });
+
+    socket.on("new_message", function (data) {
+      if (String(data.sender_id) === RECIPIENT_ID) {
+        // 1. Check/Add Divider FIRST
+        appendDateDividerIfNeeded();
+
+        // 2. Add Message
+        const msgEl = createMessageElement(
+          data.body,
+          "received",
+          RECIPIENT_AVATAR,
+          null,
+          data.timestamp,
+          "read",
+        );
+        chatHistory.appendChild(msgEl);
+
+        notifySound.play().catch((e) => console.log("Interact first"));
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+        socket.emit("mark_read", { sender_id: RECIPIENT_ID });
+      }
+    });
+
+    // TICK LOGIC:
+    socket.on("message_sent_confirmation", function (data) {
+      const icon = document.getElementById(`tick-${data.temp_id}`);
+      if (icon) icon.className = "bi bi-check2 tick-sent";
+    });
+
+    socket.on("messages_read_update", function (data) {
+      document
+        .querySelectorAll(".tick-sent, .bi-clock, .tick-clock")
+        .forEach((icon) => {
           icon.className = "bi bi-check2-all tick-read";
         });
-      });
-  
-      socket.on("display_typing", function (data) {
-        if (String(data.sender_id) === RECIPIENT_ID) {
-          userStatus.innerText = "typing...";
-          userStatus.classList.add("typing");
-        }
-      });
-  
-      socket.on("hide_typing", function (data) {
-        if (String(data.sender_id) === RECIPIENT_ID) {
-          userStatus.innerText = "@" + "{{ recipient.username }}";
-          userStatus.classList.remove("typing");
-        }
-      });
-  
-      // --- 5. DOM HELPER (FIX: SECURE DOM & XSS PROTECTION) ---
-      function addMessageToUI(
-        text,
-        type,
-        avatarUrl,
-        tempId = null,
-        utcTimestamp = null,
-        status = "clock",
-      ) {
-        const lastDivider = document.querySelector(".date-label:last-child");
-        if (!lastDivider || lastDivider.innerText !== "Today") {
-          const div = document.createElement("div");
-          div.className = "date-divider";
-          div.innerHTML = '<span class="date-label">Today</span>';
-          chatHistory.appendChild(div);
-        }
-  
-        const wrapper = document.createElement("div");
-        wrapper.className = `message-wrapper ${type}`;
-  
-        const currentIso = utcTimestamp || new Date().toISOString();
-        wrapper.setAttribute("data-timestamp", currentIso);
-  
-        let timeDisplay = new Date().toLocaleTimeString([], {
+    });
+
+    socket.on("display_typing", function (data) {
+      if (String(data.sender_id) === RECIPIENT_ID) {
+        userStatus.innerText = "typing...";
+        userStatus.classList.add("typing");
+      }
+    });
+
+    socket.on("hide_typing", function (data) {
+      if (String(data.sender_id) === RECIPIENT_ID) {
+        userStatus.innerText = "@" + "{{ recipient.username }}";
+        userStatus.classList.remove("typing");
+      }
+    });
+
+    // --- 6. DOM HELPER ---
+    function createMessageElement(
+      text,
+      type,
+      avatarUrl,
+      tempId = null,
+      utcTimestamp = null,
+      status = "clock",
+    ) {
+      const wrapper = document.createElement("div");
+      wrapper.className = `message-wrapper ${type}`;
+
+      const currentIso = utcTimestamp || new Date().toISOString();
+      wrapper.setAttribute("data-timestamp", currentIso);
+
+      let timeDisplay = new Date()
+        .toLocaleTimeString([], {
           hour: "numeric",
           minute: "2-digit",
           hour12: true,
-        }).toUpperCase();;
-        if (utcTimestamp) {
-          timeDisplay = new Date(utcTimestamp).toLocaleTimeString([], {
+        })
+        .toUpperCase();
+
+      if (utcTimestamp) {
+        timeDisplay = new Date(utcTimestamp)
+          .toLocaleTimeString([], {
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
-          }).toUpperCase();;
-        }
-  
-        let statusHtml = "";
-        if (type === "sent") {
-          let iconClass = "bi bi-clock";
-          if (status === "sent") iconClass = "bi bi-check2 tick-sent";
-          statusHtml = `<span class="msg-tick"><i id="tick-${tempId}" class="${iconClass}"></i></span>`;
-        }
-  
-        // FIX: Secure DOM Creation
-        // 1. Create Avatar Image
-        const avatarImg = document.createElement("img");
-        avatarImg.src = avatarUrl;
-        avatarImg.className = "avatar-chat";
-  
-        // 2. Create Bubble Container
-        const bubbleDiv = document.createElement("div");
-        bubbleDiv.className = "msg-bubble";
-  
-        // 3. Create Text Span (This is the Security Fix)
-        // Browsers treats textContent as raw text, preventing XSS attacks automatically
-        const textSpan = document.createElement("span");
-        textSpan.className = "msg-text";
-        textSpan.textContent = text; 
-  
-        // 4. Create Meta Div
-        const metaDiv = document.createElement("div");
-        metaDiv.className = "msg-meta";
-        metaDiv.innerHTML = `<span class="msg-time">${timeDisplay}</span>${statusHtml}`;
-  
-        // 5. Assemble
-        bubbleDiv.appendChild(textSpan);
-        bubbleDiv.appendChild(metaDiv);
-  
-        wrapper.appendChild(avatarImg);
-        wrapper.appendChild(bubbleDiv);
-  
-        chatHistory.appendChild(wrapper);
-        chatHistory.scrollTop = chatHistory.scrollHeight;
+          })
+          .toUpperCase();
       }
-    });
-  </script>
-  {% endblock %}
+
+      let statusHtml = "";
+      if (type === "sent") {
+        let iconClass = "bi bi-clock tick-clock"; // Default: Clock
+
+        // Logic for specific status inputs
+        if (status === "sent") iconClass = "bi bi-check2 tick-sent"; // Single Tick
+        if (status === "read") iconClass = "bi bi-check2-all tick-read"; // Double Tick
+
+        statusHtml = `<span class="msg-tick"><i id="tick-${tempId || ""}" class="${iconClass}"></i></span>`;
+      }
+
+      const avatarImg = document.createElement("img");
+      avatarImg.src = avatarUrl;
+      avatarImg.className = "avatar-chat";
+
+      const bubbleDiv = document.createElement("div");
+      bubbleDiv.className = "msg-bubble";
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "msg-text";
+      textSpan.textContent = text;
+
+      const metaDiv = document.createElement("div");
+      metaDiv.className = "msg-meta";
+
+      // UPDATE: Add 'loaded' class immediately so new messages appear instantly
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "msg-time loaded"; // <--- ADDED 'loaded'
+      timeSpan.innerText = timeDisplay;
+
+      // Use the span we created instead of innerHTML string to be safer/cleaner
+      metaDiv.appendChild(timeSpan);
+      
+      // Re-add the ticks manually since we aren't using innerHTML for the time anymore
+      if (statusHtml) {
+          const tickSpan = document.createElement("span");
+          tickSpan.innerHTML = statusHtml; 
+          metaDiv.appendChild(tickSpan);
+      }
+
+      bubbleDiv.appendChild(textSpan);
+      bubbleDiv.appendChild(metaDiv);
+
+      wrapper.appendChild(avatarImg);
+      wrapper.appendChild(bubbleDiv);
+
+      return wrapper;
+    }
+  });
+</script>
+{% endblock %}

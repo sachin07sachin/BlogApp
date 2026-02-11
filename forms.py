@@ -1,13 +1,20 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, EmailField, TextAreaField, BooleanField, HiddenField, SelectField
-from wtforms.validators import DataRequired, URL, Email, Length, EqualTo, Regexp
+from wtforms.validators import DataRequired, Optional, URL, Email, Length, EqualTo, Regexp
 from flask_ckeditor import CKEditorField
 from utils.validators import validate_strong_password
+from flask_wtf.file import FileField, FileAllowed
 
 class CreatePostForm(FlaskForm):
     title = StringField("Blog Post Title", validators=[DataRequired(), Length(max=250, message="Title cannot exceed 250 characters.")])
     subtitle = StringField("Subtitle", validators=[DataRequired(), Length(max=250, message="Subtitle cannot exceed 250 characters.")])
-    img_url = StringField("Blog Image URL", validators=[DataRequired(), URL(), Length(max=500, message="Image URL is too long.")])
+    img_url = StringField("Blog Image URL", validators=[Optional(), URL(), Length(max=2048, message="Image URL is too long.")])
+
+    # --- NEW: File Upload Field ---
+    img_file = FileField("Upload Image", validators=[
+        Optional(),
+        FileAllowed(['jpg', 'png', 'jpeg', 'gif', 'webp'], 'Images only!')
+    ])
     # body = CKEditorField("Blog Content", validators=[DataRequired()])
     body = TextAreaField("Blog Content", validators=[DataRequired()])
     # Default is True (checked) so comments are enabled by default
@@ -30,14 +37,14 @@ class RegisterForm(FlaskForm):
         "Username",
         validators=[
             DataRequired(),
-            Length(min=4, max=30, message="Username must be between 4 and 30 characters."),
+            Length(min=4, max=20, message="Username must be between 4 and 20 characters."),
             # This Regex ensures the username is URL-safe (no spaces, no symbols like @ or !)
             Regexp(r'^\w+$', message="Username can only contain letters, numbers, or underscores.")
         ],
         render_kw={"class": "form-control", "placeholder": "Choose a unique username"}
     )
 
-    name = StringField("Name", validators=[DataRequired(), Length(max=120, message="Name cannot exceed 120 characters.")])
+    name = StringField("Name", validators=[DataRequired(), Length(max=20, message="Name cannot exceed 20 characters.")])
     
     password = PasswordField(
         "Password",
