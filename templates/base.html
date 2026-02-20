@@ -66,76 +66,97 @@
     <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 
     <script>
-      // Define a reusable function attached to the window object
-      // This allows other scripts (like post.html's infinite scroll) to call it manually.
-      window.localizeTimes = function (scopeElement = document) {
-        console.log("Running Time Localization on scope:", scopeElement);
+      // --- UNIVERSAL DATE FORMATTER (The Single Source of Truth) ---
+      // This ensures Chat, Inbox, Comments, and Posts all use the same time standards.
 
+      // 1. Global Helper: Use this in Chat/Inbox sockets to get the string immediately
+      window.getFriendlyDate = function (dateInput, style) {
+        if (!dateInput) return "";
+        const date = new Date(dateInput);
         const timeOptions = {
           hour: "numeric",
           minute: "2-digit",
           hour12: true,
         };
 
-        // 1. Convert simple Times (Chat)
-        const timeElements = scopeElement.querySelectorAll(".local-time");
-        timeElements.forEach(function (elem) {
-          // Avoid re-converting if already done (optimization)
-          if (elem.dataset.localized) return;
+        // STYLE: FULL (For Blog Posts headers)
+        // Matches: %d %B %Y -> "16 February 2026"
+        if (style === "full") {
+          return date.toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          });
+        }
+
+        // STYLE: SMART (For Chat, Inbox, Comments)
+        // Logic: Today (Time) -> Yesterday -> Older Date (%d %b %Y)
+        const now = new Date();
+        // Zero out time to compare Dates strictly
+        const today = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+        );
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const target = new Date(
+          date.getFullYear(),
+          date.getMonth(),
+          date.getDate(),
+        );
+
+        if (target.getTime() === today.getTime()) {
+          return date.toLocaleTimeString([], timeOptions).toUpperCase();
+        } else if (target.getTime() === yesterday.getTime()) {
+          return "Yesterday";
+        } else {
+          // Matches: %d %b %Y -> "16 Feb 2026"
+          return date.toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          });
+        }
+      };
+
+      // 2. Auto-Formatter: Finds HTML elements on page load and fixes them
+      // This allows other scripts (like infinite scroll) to call it manually.
+      window.localizeTimes = function (scopeElement = document) {
+        const timeOptions = {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        };
+
+        // A. Process "Smart Dates" (Inbox, Posts, Comments)
+        scopeElement.querySelectorAll(".smart-date").forEach(function (elem) {
+          if (elem.dataset.localized) return; // Prevent double-work
 
           const utcStr = elem.getAttribute("data-utc");
+          const style = elem.getAttribute("data-style"); // Check if 'full' is requested
+
           if (utcStr) {
+            // Use the shared helper logic
+            elem.textContent = window.getFriendlyDate(utcStr, style);
+            elem.dataset.localized = "true";
+            elem.classList.add("loaded"); // Triggers CSS fade-in
+          }
+        });
+
+        // B. Process "Local Times" (Chat Bubbles fallback)
+        scopeElement.querySelectorAll(".local-time").forEach(function (elem) {
+          if (elem.dataset.localized) return;
+          const utcStr = elem.getAttribute("data-utc");
+          if (utcStr) {
+            // Chat bubbles always show Time (10:30 AM)
             const date = new Date(utcStr);
             elem.textContent = date
               .toLocaleTimeString([], timeOptions)
               .toUpperCase();
-            elem.dataset.localized = "true"; // Mark as done
-          }
-        });
-
-        // 2. Convert Smart Dates (Posts & Comments)
-        const dateElements = scopeElement.querySelectorAll(".smart-date");
-        console.log("Found smart-date elements in scope:", dateElements.length);
-
-        dateElements.forEach(function (elem) {
-          if (elem.dataset.localized) return;
-
-          const utcStr = elem.getAttribute("data-utc");
-          const style = elem.getAttribute("data-style");
-
-          if (utcStr) {
-            const msgDate = new Date(utcStr);
-            const now = new Date();
-            const isToday = msgDate.toDateString() === now.toDateString();
-
-            // CASE A: Explicit "Full" Style (Used for Home Page / Blog Posts)
-            if (style === "full") {
-              // FIX: Added Time to format so changes are visible locally
-              elem.textContent = msgDate.toLocaleDateString([], {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              });
-
-              console.log("Converted:", utcStr, "->", elem.textContent);
-            }
-            // CASE B: Default Style (Used for Inbox / Comments)
-            else {
-              if (isToday) {
-                // Show Time for today
-                elem.textContent = msgDate
-                  .toLocaleTimeString([], timeOptions)
-                  .toUpperCase();
-              } else {
-                // Show Short Date for history
-                elem.textContent = msgDate.toLocaleDateString([], {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                });
-              }
-            }
-            elem.dataset.localized = "true"; // Mark as done
+            elem.dataset.localized = "true";
+            elem.classList.add("loaded");
           }
         });
       };
@@ -147,85 +168,85 @@
     </script>
 
     <script>
-          // 1. Register Service Worker & Wait for Ready (Fixes AbortError)
-          if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/sw.js");
+        // 1. Register Service Worker & Wait for Ready (Fixes AbortError)
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("/sw.js");
 
-            // We wait for the 'ready' promise to resolve before trying to subscribe.
-            // This ensures the SW is active and can handle the PushManager request.
-            navigator.serviceWorker.ready.then(function (reg) {
-              console.log("Service Worker Registered and Ready!");
-              {% if current_user.is_authenticated %}
-                initializePush(reg);
-              {% endif %}
+          // We wait for the 'ready' promise to resolve before trying to subscribe.
+          // This ensures the SW is active and can handle the PushManager request.
+          navigator.serviceWorker.ready.then(function (reg) {
+            console.log("Service Worker Registered and Ready!");
+            {% if current_user.is_authenticated %}
+              initializePush(reg);
+            {% endif %}
+          });
+        }
+
+        // 2. Ask for Permission & Subscribe
+        function initializePush(reg) {
+          // Check if we already have permission
+          if (Notification.permission === "granted") {
+            subscribeUser(reg);
+          } else if (Notification.permission !== "denied") {
+            // If not denied, ask for it (usually triggered by a button click in real apps)
+            Notification.requestPermission().then(function (permission) {
+              if (permission === "granted") {
+                subscribeUser(reg);
+              }
             });
           }
+        }
 
-          // 2. Ask for Permission & Subscribe
-          function initializePush(reg) {
-            // Check if we already have permission
-            if (Notification.permission === "granted") {
-              subscribeUser(reg);
-            } else if (Notification.permission !== "denied") {
-              // If not denied, ask for it (usually triggered by a button click in real apps)
-              Notification.requestPermission().then(function (permission) {
-                if (permission === "granted") {
-                  subscribeUser(reg);
-                }
-              });
-            }
-          }
+        function subscribeUser(reg) {
+          const applicationServerKey = urlB64ToUint8Array(
+            "BKInLZjDOIlN9ryyzcLu6OQAx56ylxSJVQJfxwQqaXlpv9r6Z9PZFI1sYRzoOVaeKqHqEfc4VyPYkqO__F49dk0",
+          );
 
-          function subscribeUser(reg) {
-            const applicationServerKey = urlB64ToUint8Array(
-              "BKInLZjDOIlN9ryyzcLu6OQAx56ylxSJVQJfxwQqaXlpv9r6Z9PZFI1sYRzoOVaeKqHqEfc4VyPYkqO__F49dk0",
-            );
-
-            reg.pushManager
-              .subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: applicationServerKey,
-              })
-              .then(function (subscription) {
-                // Send the subscription to your Backend to save in DB
-                updateSubscriptionOnServer(subscription);
-              })
-              .catch(function (err) {
-                console.log("Failed to subscribe the user: ", err);
-              });
-          }
-
-          function updateSubscriptionOnServer(subscription) {
-            // SEND TO BACKEND
-            // We use apiFetch so if the session expired while they were away,
-            // it handles the redirect gracefully instead of crashing.
-            apiFetch("/subscribe", {
-                method: "POST",
-                body: JSON.stringify(subscription),
-                // Note: apiFetch automatically adds Content-Type and CSRF headers
+          reg.pushManager
+            .subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: applicationServerKey,
             })
-              .then((response) => {
-                if (response.ok) console.log("Sent subscription to server!");
-                else console.log("Server rejected subscription");
-              })
-              .catch((err) => console.error("Error sending subscription:", err));
-          }
+            .then(function (subscription) {
+              // Send the subscription to your Backend to save in DB
+              updateSubscriptionOnServer(subscription);
+            })
+            .catch(function (err) {
+              console.log("Failed to subscribe the user: ", err);
+            });
+        }
 
-          // Helper to convert VAPID key
-          function urlB64ToUint8Array(base64String) {
-            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-            const base64 = (base64String + padding)
-              .replace(/\-/g, "+")
-              .replace(/_/g, "/");
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) {
-              outputArray[i] = rawData.charCodeAt(i);
-            }
-            return outputArray;
-          }
+        function updateSubscriptionOnServer(subscription) {
+          // SEND TO BACKEND
+          // We use apiFetch so if the session expired while they were away,
+          // it handles the redirect gracefully instead of crashing.
+          apiFetch("/subscribe", {
+              method: "POST",
+              body: JSON.stringify(subscription),
+              // Note: apiFetch automatically adds Content-Type and CSRF headers
+          })
+            .then((response) => {
+              if (response.ok) console.log("Sent subscription to server!");
+              else console.log("Server rejected subscription");
+            })
+            .catch((err) => console.error("Error sending subscription:", err));
+        }
 
-          // ==========================================
+        // Helper to convert VAPID key
+        function urlB64ToUint8Array(base64String) {
+          const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+          const base64 = (base64String + padding)
+            .replace(/\-/g, "+")
+            .replace(/_/g, "/");
+          const rawData = window.atob(base64);
+          const outputArray = new Uint8Array(rawData.length);
+          for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+          }
+          return outputArray;
+        }
+
+        // ==========================================
         // 3. UNIVERSAL API FETCH (The Fix)
         // ==========================================
         /**
@@ -233,56 +254,56 @@
          * If session is dead, it redirects the browser to login.
          */
         async function apiFetch(url, options = {}) {
-            // 1. Default Headers (JSON + CSRF + AJAX Flag)
-            const headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json", // Critical: Tells server to send JSON error, not HTML
-                "X-CSRFToken": "{{ csrf_token() }}", // Flask-WTF token
-                "X-Requested-With": "XMLHttpRequest", // Critical: Marks this as AJAX for server
-                ...options.headers, // Merge custom headers
-            };
+          // 1. Default Headers (JSON + CSRF + AJAX Flag)
+          const headers = {
+              "Content-Type": "application/json",
+              "Accept": "application/json", // Critical: Tells server to send JSON error, not HTML
+              "X-CSRFToken": "{{ csrf_token() }}", // Flask-WTF token
+              "X-Requested-With": "XMLHttpRequest", // Critical: Marks this as AJAX for server
+              ...options.headers, // Merge custom headers
+          };
 
-            // Helper to build the perfect redirect URL with Hash support
-            const getLoginUrl = () => {
-                const currentPath = window.location.pathname + window.location.search + window.location.hash;
-                return "{{ url_for('login_get') }}?mode=session_expired&next=" + encodeURIComponent(currentPath);
-            };
+          // Helper to build the perfect redirect URL with Hash support
+          const getLoginUrl = () => {
+              const currentPath = window.location.pathname + window.location.search + window.location.hash;
+              return "{{ url_for('login_get') }}?mode=session_expired&next=" + encodeURIComponent(currentPath);
+          };
 
-            try {
-                const response = await fetch(url, { ...options, headers });
+          try {
+              const response = await fetch(url, { ...options, headers });
 
-                // 2. DETECT SESSION EXPIRY (Server returned 401 JSON)
-                // This works with the updated handle_csrf_error in main.py
-                if (response.status === 401) {
-                  const clone = response.clone();
-                  try {
-                      const data = await clone.json();
-                      if (data.error === "session_expired") {
-                          console.warn("Session expired. Redirecting to login...");
-                          // FIX: Use Client-side logic to preserve the Hash (#)
-                          window.location.href = getLoginUrl();
-                          return null;
-                      }
-                  } catch (e) {
-                      // Not JSON, ignore
-                  }
-              }
-
-                // 3. DETECT HTML REDIRECT (Fallback)
-                // If the server forced a redirect to login page (status 200 but URL changed)
-                if (response.redirected && response.url.includes("/login")) {
-                  window.location.href = getLoginUrl();
-                  return null;
-              }
-
-                return response;
-            } catch (error) {
-                console.error("API Error:", error);
-                throw error;
+              // 2. DETECT SESSION EXPIRY (Server returned 401 JSON)
+              // This works with the updated handle_csrf_error in main.py
+              if (response.status === 401) {
+                const clone = response.clone();
+                try {
+                    const data = await clone.json();
+                    if (data.error === "session_expired") {
+                        console.warn("Session expired. Redirecting to login...");
+                        // FIX: Use Client-side logic to preserve the Hash (#)
+                        window.location.href = getLoginUrl();
+                        return null;
+                    }
+                } catch (e) {
+                    // Not JSON, ignore
+                }
             }
-        }
 
-        // ==========================================
+              // 3. DETECT HTML REDIRECT (Fallback)
+              // If the server forced a redirect to login page (status 200 but URL changed)
+              if (response.redirected && response.url.includes("/login")) {
+                window.location.href = getLoginUrl();
+                return null;
+            }
+
+              return response;
+          } catch (error) {
+              console.error("API Error:", error);
+              throw error;
+          }
+      }
+
+      // ==========================================
       // 5. UNIVERSAL LIKE BUTTON LOGIC (Event Delegation)
       // ==========================================
       // We attach the listener to the BODY, so it catches clicks
@@ -300,8 +321,6 @@
         const postId = btn.dataset.postId;
         const icon = btn.querySelector(".heart-icon");
         const countSpan = btn.querySelector(".like-count");
-
-
 
         // 5. Network Request
         apiFetch(`/like/${postId}`, {
@@ -336,27 +355,77 @@
     <script>
       // 1. Initialize Socket GLOBALLY once
       // We check if it exists to be safe, but we define it here for everyone.
-      if (typeof io !== 'undefined') {
-          // Assign to window so chat.html can use it
-          window.socket = io(); 
+      if (typeof io !== "undefined") {
+        // Assign to window so chat.html can use it
+        window.socket = io();
 
-          document.addEventListener("DOMContentLoaded", function () {
-              // --- GLOBAL: Listen for Unread Count Updates ---
-              window.socket.on("unread_count_update", function(data) {
-                  const count = data.count;
-                  const badge = document.getElementById("nav-unread-badge");
-                  
-                  if (badge) {
-                      if (count > 0) {
-                          badge.innerText = count;
-                          badge.classList.remove("d-none"); 
-                      } else {
-                          badge.classList.add("d-none");
-                      }
-                  }
-              });
+        document.addEventListener("DOMContentLoaded", function () {
+          // --- GLOBAL: Listen for Unread Count Updates ---
+          window.socket.on("unread_count_update", function (data) {
+            const count = data.count;
+            const badge = document.getElementById("nav-unread-badge");
+
+            if (badge) {
+              if (count > 0) {
+                badge.innerText = count;
+                badge.classList.remove("d-none");
+              } else {
+                badge.classList.add("d-none");
+              }
+            }
           });
+        });
       }
+    </script>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Listen for ANY form submission on the page
+        document.addEventListener(
+          "submit",
+          function (e) {
+            const form = e.target;
+
+            // 1. Safety Check: Ensure it's actually a form
+            if (form.tagName !== "FORM") return;
+
+            // 2. Chat/AJAX Exception:
+            // If some other JS (like your Chat) already prevented the default submit
+            // to handle it via Socket/AJAX, we should NOT disable the button.
+            if (e.defaultPrevented) return;
+
+            // 3. Validation Check: Let HTML5 validation stop us first
+            if (!form.checkValidity()) return;
+
+            // 4. Find the submit button(s)
+            const submitBtns = form.querySelectorAll(
+              'button[type="submit"], input[type="submit"]',
+            );
+
+            submitBtns.forEach((btn) => {
+              if (!btn.disabled) {
+                // A. Lock the dimensions (prevents button shrinking when text changes)
+                btn.style.width = btn.offsetWidth + "px";
+
+                // B. Disable the button
+                btn.disabled = true;
+
+                // C. Show Loading Spinner (Bootstrap style)
+                // We check if it's an input (value attribute) or button (innerHTML)
+                if (btn.tagName === "INPUT") {
+                  btn.value = "Wait...";
+                } else {
+                  // Store original content in case we need to revert (rare)
+                  btn.dataset.originalContent = btn.innerHTML;
+                  btn.innerHTML =
+                    '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                }
+              }
+            });
+          },
+          true,
+        ); // 'true' = Capture phase (ensures we catch it early)
+      });
     </script>
 
     {% block scripts %}{% endblock %}

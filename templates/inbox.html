@@ -23,7 +23,6 @@ block styles %}
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     border-bottom: 1px solid #f0f0f0 !important;
     background-color: #fff;
-    
   }
 
   .conversation-item:last-child {
@@ -67,9 +66,9 @@ block styles %}
 
   /* 6. Typography & Text Control */
   /* Utility to ensure Flexbox allows text truncation */
-    .text-content-wrapper {
-        min-width: 0;
-    }
+  .text-content-wrapper {
+    min-width: 0;
+  }
 
   .partner-name {
     font-size: 1.1rem;
@@ -87,19 +86,19 @@ block styles %}
     -webkit-line-clamp: 2; /* Show exactly 2 lines then ... */
     -webkit-box-orient: vertical;
     overflow: hidden;
-    
+
     /* Allow wrapping to next line */
-    white-space: normal; 
-    
+    white-space: normal;
+
     /* CRITICAL FIX: Break long words (ggggg...) so they don't break layout */
-    word-break: break-word; 
-    
+    word-break: break-word;
+
     font-size: 0.95rem;
     line-height: 1.4;
     color: #6c757d;
     margin-top: 4px;
     padding-right: 20px;
-}
+  }
 
   .timestamp-small {
     font-size: 0.75rem;
@@ -107,7 +106,7 @@ block styles %}
     text-transform: uppercase;
     letter-spacing: 0.05em;
     white-space: nowrap; /* Prevent date wrapping */
-    flex-shrink: 0;      /* Prevent date squishing */
+    flex-shrink: 0; /* Prevent date squishing */
   }
 
   /* 7. Empty State Refinement */
@@ -179,23 +178,35 @@ block styles %}
               >
                 <h6 class="partner-name mb-0 fw-bold">{{ data.user.name }}</h6>
 
-                {# Added ID 'time-{{ partner_id }}' #}
+                {# Added ID 'time-{{ partner_id }}' #} {# DATE FIX: Empty
+                content to prevent FOUC. JS fills this instantly. #}
                 <small
                   id="time-{{ partner_id }}"
                   class="text-muted smart-date timestamp-small"
                   data-utc="{{ data.last_message.timestamp.isoformat() }}"
-                >
-                  {{ data.last_message.timestamp.strftime('%d %b %Y') }}
-                </small>
+                ></small>
               </div>
 
               {# Added ID 'preview-{{ partner_id }}' #}
-              <div id="preview-{{ partner_id }}" class="last-message-preview">
-                {% if data.last_message.sender_id == current_user.id %}
-                <span class="text-primary fw-bold" style="font-size: 0.85rem"
+              <div
+                id="preview-{{ partner_id }}"
+                class="last-message-preview"
+                data-last-msg-id="{{ data.last_message.id }}"
+              >
+                {% if data.last_message.is_deleted %}
+                <span class="text-muted fst-italic">
+                  <i class="bi bi-slash-circle me-1"></i> This message was
+                  deleted
+                </span>
+                {% else %} {% if data.last_message.sender_id == current_user.id
+                %}
+                <span
+                  class="text-primary fw-bold"
+                  style="font-size: 0.85rem; margin-right: 4px"
                   >You:</span
                 >
-                {% endif %} {{ data.last_message.body | replace('\n', ' ') | truncate(60) }}
+                {%- endif -%} {{ data.last_message.body | replace('\n', ' ') |
+                truncate(60) | trim }} {% endif %}
               </div>
             </div>
 
@@ -233,6 +244,8 @@ block styles %}
   document.addEventListener("DOMContentLoaded", function () {
     // Use the global socket from base.html
     const socket = window.socket;
+    // Capture current user ID for the "You:" logic (Multi-tab support)
+    const currentUserId = "{{ current_user.id }}";
 
     if (socket) {
       // Listen for INCOMING messages to update the list in real-time
@@ -250,10 +263,24 @@ block styles %}
           if (preview) {
             // 1. Replace ALL newline characters (\n or \r) with a single space
             // 2. Trim excess whitespace
-            const cleanText = data.body.replace(/[\n\r]+/g, ' ').trim();
-            preview.innerText = cleanText; // Update text
+            let cleanText = data.body.replace(/[\n\r]+/g, " ").trim();
+
+            // FIX: Manually truncate to 60 chars to match Jinja's | truncate(60) behavior
+            if (cleanText.length > 60) {
+              cleanText = cleanText.substring(0, 60) + "...";
+            }
+
+            // FIX: Conditional "You:" prefix logic for real-time updates
+            // (Handles multi-tab scenarios where I sent the message from another tab)
+            if (String(data.sender_id) === String(currentUserId)) {
+              preview.innerHTML = `<span class="text-primary fw-bold" style="font-size: 0.85rem; margin-right: 4px;">You:</span>${cleanText}`;
+            } else {
+              preview.innerText = cleanText; // Update text normally
+            }
+
             preview.style.fontWeight = "700"; // Make it bold
             preview.style.color = "#212529";
+            preview.setAttribute("data-last-msg-id", data.id);
           }
 
           // B. Update Time (DYNAMICALLY using Base Logic)
@@ -262,12 +289,9 @@ block styles %}
             // 1. Update the Data Attribute to the new time
             timeEl.setAttribute("data-utc", data.timestamp);
 
-            // 2. Remove the 'localized' flag so the formatter runs again
-            delete timeEl.dataset.localized;
-
-            // 3. Call the Global Formatter from base.html on just this row
-            if (window.localizeTimes) {
-              window.localizeTimes(row);
+            // 2. Use the Global Helper from base.html (Universal Standard)
+            if (window.getFriendlyDate) {
+              timeEl.innerText = window.getFriendlyDate(data.timestamp);
             }
           }
 
@@ -289,6 +313,23 @@ block styles %}
           // Scenario: This is a BRAND NEW conversation not in the list yet.
           // For MVP simplicity: We just force a reload so the Jinja loop runs again.
           location.reload();
+        }
+      });
+
+      socket.on("message_deleted", function (data) {
+        const deletedId = data.message_id;
+        // Find the preview element that is currently displaying THIS message ID
+        const previewEl = document.querySelector(
+          `.last-message-preview[data-last-msg-id="${deletedId}"]`,
+        );
+
+        if (previewEl) {
+          // Instant Replace
+          previewEl.innerHTML = `
+                <span class="text-muted fst-italic">
+                    <i class="bi bi-slash-circle me-1"></i> This message was deleted
+                </span>
+            `;
         }
       });
     }

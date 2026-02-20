@@ -9,6 +9,12 @@ from functools import wraps
 import uuid
 import hashlib
 import time
+import io
+import filetype
+import requests
+import cloudinary
+import cloudinary.uploader
+import redis
 # Replaced native threading with SocketIO background tasks for Eventlet compatibility
 # from threading import Thread 
 
@@ -38,12 +44,14 @@ from flask_wtf.csrf import CSRFError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, text, or_, and_, extract, func, select, desc
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
+from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from urllib.parse import urlparse
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
+from calendar import month_name
 
 # Local Imports
 from forms import (
@@ -61,6 +69,12 @@ from utils.captcha import verify_hcaptcha
 # Load environment variables
 load_dotenv()
 
+# Configure Cloudinary SDK
+cloudinary.config(
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key = os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+)
 
 class Config:
     """Base Configuration Class."""
@@ -96,8 +110,8 @@ class Config:
 
     # --- NEW: Upload Configuration ---
     # Define where uploads go. 'static/uploads' is easiest for serving.
-    UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static/uploads')
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB Max Size
+    # UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static/uploads')
+    MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8MB Max Size
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -159,6 +173,43 @@ login_manager.init_app(app)
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+# -------------------------------------------------------------------
+# 7. RATE LIMITING & SECURITY HELPERS
+# -------------------------------------------------------------------
+
+# Initialize Rate Limiter
+redis_url = os.environ.get("REDIS_URL")
+if not redis_url:
+    raise RuntimeError("REDIS_URL environment variable not set")
+
+limiter = Limiter(
+    app=app, 
+    key_func=get_remote_address, 
+    storage_uri=redis_url, 
+    strategy="sliding-window-counter"
+)
+
+def login_rate_limit_key():
+    ip = get_remote_address()
+    email = request.form.get("email", "unknown").lower().strip()
+    return f"{ip}:{email}"
+
+def email_rate_limit_key():
+    ip = get_remote_address()
+    email = request.form.get("email", "unknown").lower().strip()
+    return f"{ip}:{email}"
+
+def match_captcha_bypass():
+    return request.form.get("h-captcha-response") is not None
+
+# Constants for Rate Limits
+RATE_LIMIT_LOGIN_GLOBAL = "60 per hour"
+RATE_LIMIT_LOGIN_SPECIFIC = "10 per minute"
+RATE_LIMIT_EMAIL_GLOBAL = "20 per hour"
+RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"
+MAX_LOGIN_ATTEMPTS = 5
+DUMMY_PASSWORD_HASH = generate_password_hash("dummy_password_for_timing_protection")
 
 # -------------------------------------------------------------------
 # PUSH NOTIFICATION CONFIG
@@ -299,6 +350,8 @@ class Message(db.Model):
     body: Mapped[str] = mapped_column(String(1000), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, default=func.now())
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     
     sender = relationship("User", foreign_keys=[sender_id], back_populates="messages_sent")
     recipient = relationship("User", foreign_keys=[recipient_id], back_populates="messages_received")
@@ -470,24 +523,171 @@ def get_gravatar_url(email, size=200):
     email_hash = hashlib.md5(email.lower().strip().encode('utf-8')).hexdigest()
     return f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d=retro"
 
+# --- SECURITY UTILITIES (Malware & DoS Protection) ---
+
+def validate_image_stream(stream):
+    """
+    SECURITY: Reads the first 512 bytes of a file/stream to verify it is actually an image.
+    Uses 'filetype' library to detect Magic Bytes (signatures).
+    """
+    try:
+        # Read the first 512 bytes (filetype needs ~261 bytes, but 512 is standard safety)
+        header = stream.read(512)
+        
+        # Reset the stream pointer so Cloudinary can read it from the start later
+        stream.seek(0) 
+        
+        # Guess the type based on the bytes
+        kind = filetype.guess(header)
+        
+        # 1. Check if it detected ANYTHING
+        if kind is None:
+            return False
+            
+        # 2. Strict Check: Ensure the MIME type indicates an image
+        # This blocks video files or archives even if they are valid files
+        if not kind.mime.startswith('image/'):
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"Image validation error: {e}")
+        return False
+
+def validate_and_download_url(url):
+    """
+    SECURITY: Safely downloads an image URL with Stream Validation.
+    Prevents DoS attacks (Never-ending streams or 5GB files).
+    Returns: (bytes_data, error_message)
+    """
+    MAX_SIZE = 8 * 1024 * 1024  # 8 MB limit (Matches Upload Limit)
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        # 1. Stream the request (Don't download body yet)
+        # Timeout prevents hanging connections
+        with requests.get(url, headers=headers, stream=True, timeout=5) as r:
+            r.raise_for_status()
+            
+            # 2. Check Content-Length Header (Fast check)
+            content_length = r.headers.get('Content-Length')
+            if content_length and int(content_length) > MAX_SIZE:
+                return None, "Image at URL is too large (Max 8MB)."
+            
+            # 3. Check Content-Type Header (Basic check)
+            content_type = r.headers.get('Content-Type', '')
+            if 'image' not in content_type:
+                 return None, "URL does not point to a valid image."
+
+            # 4. Download in Chunks (The Real Safety Net)
+            # If header is missing/fake, this stops the download loop at 8MB
+            image_data = b""
+            for chunk in r.iter_content(chunk_size=1024):
+                image_data += chunk
+                if len(image_data) > MAX_SIZE:
+                    return None, "Image at URL is too large (Max 8MB)."
+            
+            # 5. Verify Magic Bytes on the downloaded data
+            # Wrap bytes in a stream object for our validator
+            if not validate_image_stream(io.BytesIO(image_data)):
+                 return None, "URL content is not a valid image file."
+
+            return image_data, None
+
+    except requests.exceptions.Timeout:
+        return None, "URL connection timed out."
+    except Exception as e:
+        logger.warning(f"URL Validation Failed: {e}")
+        return None, "Invalid or inaccessible URL."
+
 def save_picture(form_picture):
     """
-    Saves an uploaded picture to the static/uploads folder.
-    Returns the relative path to be stored in the DB.
+    Uploads an image to Cloudinary and returns the Secure URL.
+    
+    Features:
+    - Cloud Storage: Fixes the 'wiping out' issue on restarts.
+    - Smart Resizing: Limits max dimension to 1200px (saves bandwidth).
+    - Auto-Format: Converts PNGs to WebP/AVIF automatically (faster load).
+    - Auto-Quality: Compresses file size without visual loss.
+    - Animation Support: Handles GIFs correctly (keeps them moving).
     """
-    random_hex = uuid.uuid4().hex
-    _, f_ext = os.path.splitext(form_picture.filename)
-    picture_fn = random_hex + f_ext
-    
-    # Ensure directory exists
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
+    try:
+        # 1. Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(
+            form_picture,
+            folder="my_blog_posts", # Organizes uploads into this folder
+            
+            # 2. Apply Transformations on the Fly
+            transformation=[
+                {
+                    # Dimensions: Max 1200px width or height
+                    'width': 1200, 
+                    'height': 1200, 
+                    
+                    # Mode: 'limit' ensures we don't stretch small images
+                    'crop': 'limit',
+                    
+                    # Optimization: AI determines best compression level
+                    'quality': 'auto',
+                    
+                    # Format: Serves WebP to Chrome, JPG to Safari, etc.
+                    'fetch_format': 'auto' 
+                }
+            ]
+        )
+
+        # 3. Return the HTTPS URL to save in the Database
+        return upload_result['secure_url']
         
-    picture_path = os.path.join(app.config['UPLOAD_FOLDER'], picture_fn)
-    form_picture.save(picture_path)
+    except Exception as e:
+        logger.error(f"Cloudinary Upload Failed: {e}")
+        return None
     
-    # Return path relative to 'static' folder so url_for('static', filename=...) works
-    return f"uploads/{picture_fn}"
+def delete_picture(img_url):
+    """
+    Deletes an image from Cloudinary, but ONLY if it belongs to this app.
+    """
+    # 1. Get your specific Cloud Name from config
+    my_cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+
+    if not my_cloud_name:
+        logger.warning("Cloudinary Cloud Name not found in env. Skipping delete.")
+        return
+
+    # 2. Safety Checks
+    if not img_url:
+        return
+        
+    # CRITICAL FIX: Ensure we only touch files in OUR cloud
+    if my_cloud_name not in img_url:
+        # It might be a local file, or someone else's Cloudinary image.
+        # Either way, we can't/shouldn't delete it.
+        return 
+
+    try:
+        # 3. Extract the Public ID
+        # URL format: .../MY_CLOUD_NAME/image/upload/v12345/my_blog_posts/abc.jpg
+        
+        # Split by '/' and take the last segment (filename)
+        filename_with_ext = img_url.split('/')[-1] 
+        
+        # Remove extension (e.g., "abc.jpg" -> "abc")
+        filename = filename_with_ext.rsplit('.', 1)[0]
+        
+        # Reconstruct the Public ID (Folder + Filename)
+        # We hardcoded "my_blog_posts" in save_picture, so we add it back here.
+        public_id = f"my_blog_posts/{filename}"
+        
+        # 4. Send Destroy Command
+        cloudinary.uploader.destroy(public_id)
+        logger.info(f"Deleted image from Cloudinary: {public_id}")
+        
+    except Exception as e:
+        logger.error(f"Cloudinary Delete Failed: {e}")
 
 def anonymize_user_data(user):
     """
@@ -545,9 +745,9 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
             # This turns: "Hi \n\n\n Hello" into: "Hi Hello"
             clean_body = " ".join(body.split())
             
-            # Truncate to ~200 chars (Safe limit for push payloads)
-            if len(clean_body) > 200:
-                clean_body = clean_body[:200] + '...'
+            # Truncate to ~100 chars (Safe limit for push payloads)
+            if len(clean_body) > 80:
+                clean_body = clean_body[:80] + '...'
             # -----------------------------
             # A. SAVE TO DATABASE (History)
             if category != 'chat':
@@ -653,8 +853,9 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
 #     else:
 #         logger.warning(f"User {email} not found.")
 
-@csrf.exempt
 @app.route("/cron/send-digest", methods=["POST"])
+@csrf.exempt
+@limiter.exempt
 def send_digest():
     """
     Consolidates unread Chat Messages AND unread Notifications (Posts/Comments)
@@ -750,6 +951,8 @@ def send_digest():
                     subject=f"You missed some activity on Blog App",
                     html_body=html_body
                 )
+
+                time.sleep(0.2)
             except Exception as e:
                 logger.error(f"Failed to send digest to {user.email}: {e}")
             
@@ -759,43 +962,6 @@ def send_digest():
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     db.session.remove()
-
-# -------------------------------------------------------------------
-# 7. RATE LIMITING & SECURITY HELPERS
-# -------------------------------------------------------------------
-
-# Initialize Rate Limiter
-redis_url = os.environ.get("REDIS_URL")
-if not redis_url:
-    raise RuntimeError("REDIS_URL environment variable not set")
-
-limiter = Limiter(
-    app=app, 
-    key_func=get_remote_address, 
-    storage_uri=redis_url, 
-    strategy="sliding-window-counter"
-)
-
-def login_rate_limit_key():
-    ip = get_remote_address()
-    email = request.form.get("email", "unknown").lower().strip()
-    return f"{ip}:{email}"
-
-def email_rate_limit_key():
-    ip = get_remote_address()
-    email = request.form.get("email", "unknown").lower().strip()
-    return f"{ip}:{email}"
-
-def match_captcha_bypass():
-    return request.form.get("h-captcha-response") is not None
-
-# Constants for Rate Limits
-RATE_LIMIT_LOGIN_GLOBAL = "60 per hour"
-RATE_LIMIT_LOGIN_SPECIFIC = "10 per minute"
-RATE_LIMIT_EMAIL_GLOBAL = "20 per hour"
-RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"
-MAX_LOGIN_ATTEMPTS = 5
-DUMMY_PASSWORD_HASH = generate_password_hash("dummy_password_for_timing_protection")
 
 # -------------------------------------------------------------------
 # 8. TOKEN & SECURITY UTILITIES
@@ -891,8 +1057,31 @@ def add_security_headers(response):
     response.headers["Permissions-Policy"] = "geolocation=()"
     return response
 
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    # Log the security event
+    logger.warning(f"413 Error: File upload too large. IP: {get_remote_address()}")
+    
+    # Flash a message the user can actually see after the reload
+    flash("File is too large. The maximum limit is 8MB.", "danger")
+    
+    # Redirect safely back to the feed (or wherever they came from)
+    return redirect(request.referrer or url_for('get_all_posts'))
+
 @app.route("/health")
+@limiter.exempt  # Explicitly exempt from limits (Best Practice)
 def health():
+    # Manual "Keep-Alive" Ping for Upstash Free Tier
+    # This prevents the DB from pausing after 14 days of inactivity
+    try:
+        redis_url = os.environ.get("REDIS_URL")
+        if redis_url:
+            r = redis.from_url(redis_url)
+            r.ping() # This tiny command resets the 14-day timer
+    except Exception:
+        # If Redis is down, we just ignore it. The app is still "healthy".
+        pass
+        
     return "OK", 200
 
 # -------------------------------------------------------------------
@@ -1326,7 +1515,6 @@ def search():
         # I am omitting the lines for brevity, but paste the previous Date Logic block here.
         m_name = f_month
         if f_month:
-            from calendar import month_name
             try:
                 m_name = month_name[int(f_month)]
             except (ValueError, IndexError):
@@ -1650,37 +1838,25 @@ def show_post(post_id):
             # --- SMART NOTIFICATIONS (Push + Email) ---
             post_url = url_for('show_post', post_id=post.id,comment_id=new_comment.id, _anchor=f"comment-{new_comment.id}", _external=True)
             notification_queue = {}
+
+            plain_text_comment = bleach.clean(new_comment.text, tags=[], strip=True).strip()
             
-            # 1. Notify Post Author
-            if post.author.notify_on_comments and post.author.id != current_user.id:
-                # A. Send Push/Activity
-                socketio.start_background_task(
-                    send_notification_async,
-                    post.author.id,
-                    f"New comment on: {post.title}",
-                    f"{current_user.name}: {new_comment.text[:60]}...", 
-                    post_url,
-                    "comment",
-                    related_post_id=post.id,
-                    related_comment_id=new_comment.id,
-                    icon_url=get_gravatar_url(current_user.email),
-                    badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                    favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
-                )
-                
-            # 2. Notify Parent Commenter (Reply Logic)
+            # Tracker to prevent double-notifying the post author
+            post_author_notified = False
+
+            # 1. Notify Parent Commenter FIRST (Reply Logic)
             if parent_id:
                 parent_comment = db.session.get(Comment, parent_id)
                 if parent_comment and parent_comment.comment_author.notify_on_comments:
                     target_user = parent_comment.comment_author
                     
-                    if target_user.id != current_user.id and target_user.id != post.author.id:
+                    if target_user.id != current_user.id:
                         # A. Send Push/Activity
                         socketio.start_background_task(
                             send_notification_async,
                             target_user.id,
-                            f"{current_user.name} replied to you",
-                            f"{new_comment.text[:60]}...",
+                            f"{current_user.name} replied to your comment",
+                            f"{plain_text_comment}",
                             post_url,
                             "comment",
                             related_post_id=post.id,
@@ -1689,6 +1865,28 @@ def show_post(post_id):
                             badge_url=url_for('static', filename='assets/badge.png', _external=True),
                             favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
                         )
+                        
+                        # Check if the person we just notified is the Post Author
+                        if target_user.id == post.author.id:
+                            post_author_notified = True
+
+            # 2. Notify Post Author SECOND (Generic Post Comment)
+            # Only run this if they weren't already notified by the reply logic above
+            if post.author.notify_on_comments and post.author.id != current_user.id and not post_author_notified:
+                # A. Send Push/Activity
+                socketio.start_background_task(
+                    send_notification_async,
+                    post.author.id,
+                    f"New comment on: {post.title}",
+                    f"{current_user.name}: {plain_text_comment}", 
+                    post_url,
+                    "comment",
+                    related_post_id=post.id,
+                    related_comment_id=new_comment.id,
+                    icon_url=get_gravatar_url(current_user.email),
+                    badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                    favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                )
 
         except Exception as e:
             # Log error but do not disrupt the user
@@ -1792,17 +1990,40 @@ def add_new_post():
 
         # A. File Upload (Priority)
         if form.img_file.data:
-            try:
-                filename = save_picture(form.img_file.data)
-                final_img_url = url_for('static', filename=filename, _external=True)
-            except Exception as e:
-                logger.error(f"Image upload failed: {e}")
-                flash("Failed to upload image.", "danger")
+            file = form.img_file.data
+            
+            # 1. SECURITY: Validate Magic Bytes
+            # Read first 512 bytes to ensure it's a real image (no PHP/EXE hacks)
+            if not validate_image_stream(file.stream):
+                flash("Invalid file. The file content does not match an image.", "danger")
                 return render_template("make-post.html", form=form)
+            
+            # 2. Upload
+            uploaded_url = save_picture(file)
+            if not uploaded_url:
+                flash("Image upload failed. Please check your file or try again.", "danger")
+                return render_template("make-post.html", form=form)
+            final_img_url = uploaded_url
         
         # B. URL Input
         elif form.img_url.data:
-            final_img_url = form.img_url.data
+            url = form.img_url.data
+            
+            # 1. SECURITY: Stream & Validate URL Content
+            # Checks size limit (8MB) and Magic Bytes before downloading fully
+            image_data, error_msg = validate_and_download_url(url)
+            
+            if error_msg:
+                flash(error_msg, "danger")
+                return render_template("make-post.html", form=form)
+            
+            # 2. Upload Bytes to Cloudinary
+            # We pass the raw bytes we just downloaded safely
+            uploaded_url = save_picture(image_data)
+            if not uploaded_url:
+                flash("Failed to process image from URL.", "danger")
+                return render_template("make-post.html", form=form)
+            final_img_url = uploaded_url
         
         # C. VALIDATION FAILURE (Neither provided)
         else:
@@ -1826,6 +2047,11 @@ def add_new_post():
                 # Flush ensures post.id is available
             # Post is safely saved here (Commit happened in safe_commit)
         
+        except IntegrityError:
+            # Captures the specific "UniqueViolation" from the DB
+            flash("A post with this title already exists.", "warning")
+            return render_template("make-post.html", form=form)
+
         except Exception as e:
             # If the database fails, we must stop everything and alert the user.
             logger.error(f"Database Error during post creation: {e}")
@@ -1899,22 +2125,66 @@ def edit_post(post_id):
         if existing_post:
             flash("A post with this title already exists. Please choose a different title.", "warning")
             return render_template("make-post.html", form=form, is_edit=True)
+        
+        new_cloud_url = None
+        is_new_upload = False
+
+        if form.img_file.data:
+            file = form.img_file.data
+            
+            # Security Check
+            if not validate_image_stream(file.stream):
+                flash("Invalid file content.", "danger")
+                return render_template("make-post.html", form=form, is_edit=True)
+                
+            uploaded_url = save_picture(file)
+            if not uploaded_url:
+                flash("Image upload failed. Update cancelled.", "danger")
+                return render_template("make-post.html", form=form, is_edit=True)
+            
+            new_cloud_url = uploaded_url
+            is_new_upload = True
+
+        # B. URL Input (Only if changed AND no file uploaded)
+        elif form.img_url.data and form.img_url.data != post.img_url:
+            url = form.img_url.data
+            
+            # Security: Stream & Size Check
+            image_data, error_msg = validate_and_download_url(url)
+            if error_msg:
+                flash(error_msg, "danger")
+                return render_template("make-post.html", form=form, is_edit=True)
+                
+            uploaded_url = save_picture(image_data)
+            if not uploaded_url:
+                flash("Failed to update image from URL.", "danger")
+                return render_template("make-post.html", form=form, is_edit=True)
+                
+            new_cloud_url = uploaded_url
+            is_new_upload = True
 
         # 2. SAVE CHANGES (Database Transaction)
         try:
+            old_img_url = post.img_url
+
             with safe_commit():
                 form.populate_obj(post)
                 post.body = clean_html(form.body.data)
                 # Handle Image Update
                 # Only update if a NEW file is uploaded or a NEW url is provided
-                if form.img_file.data:
-                    filename = save_picture(form.img_file.data)
-                    post.img_url = url_for('static', filename=filename, _external=True)
-                elif form.img_url.data and form.img_url.data != post.img_url:
-                    post.img_url = form.img_url.data
+
+                if is_new_upload:
+                    post.img_url = new_cloud_url
+                # elif form.img_url.data and form.img_url.data != post.img_url:
+                #     post.img_url = form.img_url.data
+                #     is_new_upload = True
                 
                 # Note: If fields are empty, we keep the existing post.img_url
             # Changes safely saved
+
+            # CLEANUP: If the image changed, delete the old one from Cloudinary
+            if is_new_upload:
+                socketio.start_background_task(delete_picture, old_img_url)
         
         except Exception as e:
             logger.error(f"Database Error during post edit: {e}")
@@ -1959,8 +2229,10 @@ def delete_post(post_id):
     target_username = post.author.username
     if current_user.id == post.author_id:
         try:
+            img_to_delete = post.img_url
             with safe_commit():
                 db.session.delete(post)
+            socketio.start_background_task(delete_picture, img_to_delete)
             flash("Post deleted.", "info")
         except Exception as e:
             # safe_commit logs the specific DB error, but we log context here too
@@ -1987,6 +2259,8 @@ def admin_delete_post(post_id):
         post_title = post.title
         author_obj = post.author 
         reason = form.reason.data
+
+        img_to_delete = post.img_url
         
         # Capture IDs for the log
         admin_id = current_user.id
@@ -2007,6 +2281,9 @@ def admin_delete_post(post_id):
 
                 # 2. Delete Post
                 db.session.delete(post)
+
+            if img_to_delete:
+                socketio.start_background_task(delete_picture, img_to_delete)
             
             # 3. NOTIFY (Only runs if DB succeeds)
             # --- FAIL-SAFE: Generate Common Links for Emails ---
@@ -2167,7 +2444,9 @@ def inject_global_vars():
     # Default values
     vars = {
         'current_year': datetime.now(timezone.utc).year,
-        'unread_count': 0
+        'unread_count': 0,
+        'datetime': datetime,
+        'timezone': timezone,
     }
 
     # Add user-specific data if logged in
@@ -2265,7 +2544,7 @@ def chat(user_id):
             and_(Message.sender_id == current_user.id, Message.recipient_id == user_id),
             and_(Message.sender_id == user_id, Message.recipient_id == current_user.id)
         )
-    ).order_by(Message.timestamp.desc()).limit(10)
+    ).order_by(Message.timestamp.desc()).limit(50)
     
     history = db.session.scalars(history_stmt).all()
     history.reverse()
@@ -2292,7 +2571,7 @@ def chat(user_id):
 def get_chat_history(user_id):
     # Get 'page' from URL (e.g., ?page=2), default to 1
     page = request.args.get('page', 1, type=int)
-    per_page = 10
+    per_page = 40
 
     stmt = db.select(Message).where(
         or_(
@@ -2306,10 +2585,12 @@ def get_chat_history(user_id):
     messages = []
     for msg in pagination.items:
         messages.append({
+            'id': msg.id,
             'body': msg.body,
             'timestamp': msg.timestamp.isoformat(),
             'sender_id': msg.sender_id,
             'is_read': msg.is_read,
+            'is_deleted': msg.is_deleted,
             'sender_email': msg.sender.email # Needed for Avatar logic on frontend
         })
     
@@ -2319,22 +2600,66 @@ def get_chat_history(user_id):
         'next_page': pagination.next_num
     })
 
-@app.route('/message/delete/<int:message_id>', methods=['POST'])
+@app.route('/api/message/<int:message_id>/delete', methods=['POST'])
 @login_required
-def delete_message(message_id):
+def delete_message_api(message_id):
     msg = db.session.get(Message, message_id)
-    if msg:
-        if msg.sender_id == current_user.id or current_user.role == "admin":
-            try:
-                with safe_commit():
-                    db.session.delete(msg)
-                # flash("Message deleted.", "success")
-            except Exception as e:
-                logger.error(f"Error deleting message {message_id}: {e}")
-                flash("Could not delete message.", "danger")
-        else:
-            flash("You cannot delete this message.", "danger")
-    return redirect(request.referrer or url_for('inbox'))
+    if not msg:
+        return jsonify({"error": "Message not found"}), 404
+
+    # 1. Permission Check
+    if msg.sender_id != current_user.id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # 2. Time Limit Check (12 Hours)
+    # Ensure timezone awareness (using UTC for calculation)
+    now = datetime.now(timezone.utc)
+    # If msg.timestamp is naive, force UTC (depends on your DB setup, safe approach below)
+    msg_ts = msg.timestamp
+    if msg_ts.tzinfo is None:
+        msg_ts = msg_ts.replace(tzinfo=timezone.utc)
+        
+    time_diff = now - msg_ts
+    if time_diff > timedelta(hours=12):
+        return jsonify({"error": "Time limit exceeded. Cannot delete messages older than 12 hours."}), 400
+
+    try:
+        with safe_commit():
+            msg.is_deleted = True
+            # Optional: Scrub body for security
+            # msg.body = "" 
+        
+        # 3. Real-Time Update
+        # Emit to both Sender and Recipient rooms to update UI instantly
+        event_payload = {'message_id': message_id}
+        
+        # Emit to Recipient
+        socketio.emit('message_deleted', event_payload, room=f"user_{msg.recipient_id}")
+        # Emit to Sender (Current User) - strictly speaking only needed if multiple tabs open
+        socketio.emit('message_deleted', event_payload, room=f"user_{msg.sender_id}")
+
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        logger.error(f"Error deleting message {message_id}: {e}")
+        return jsonify({"error": "Server error"}), 500
+
+# @app.route('/message/delete/<int:message_id>', methods=['POST'])
+# @login_required
+# def delete_message(message_id):
+#     msg = db.session.get(Message, message_id)
+#     if msg:
+#         if msg.sender_id == current_user.id or current_user.role == "admin":
+#             try:
+#                 with safe_commit():
+#                     db.session.delete(msg)
+#                 # flash("Message deleted.", "success")
+#             except Exception as e:
+#                 logger.error(f"Error deleting message {message_id}: {e}")
+#                 flash("Could not delete message.", "danger")
+#         else:
+#             flash("You cannot delete this message.", "danger")
+#     return redirect(request.referrer or url_for('inbox'))
 
 # main.py (Update/Add these routes)
 
@@ -2520,10 +2845,12 @@ def handle_socket_message(data):
 
             # 2. Real-time Socket Emits
             socketio.emit('new_message', {
+                'id': msg.id,
                 'sender_id': current_user.id,
                 'body': msg.body,
                 'timestamp': msg.timestamp.isoformat(),
-                'avatar': current_user.email 
+                'avatar': current_user.email,
+                'is_deleted': False, 
             }, room=f"user_{recipient_id}")
 
             # Calculate & Emit Unread Count to Recipient
@@ -2533,6 +2860,7 @@ def handle_socket_message(data):
             
             emit('message_sent_confirmation', {
                 'temp_id': data.get('temp_id'),
+                'real_id': msg.id,
                 'status': 'success',
                 'timestamp': msg.timestamp.isoformat()
             })

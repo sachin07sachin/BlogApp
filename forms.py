@@ -13,7 +13,7 @@ class CreatePostForm(FlaskForm):
     # --- NEW: File Upload Field ---
     img_file = FileField("Upload Image", validators=[
         Optional(),
-        FileAllowed(['jpg', 'png', 'jpeg', 'gif', 'webp'], 'Images only!')
+        FileAllowed(['png', 'jpeg', 'gif', 'webp'], 'Images only!')
     ])
     # body = CKEditorField("Blog Content", validators=[DataRequired()])
     body = TextAreaField("Blog Content", validators=[DataRequired()])
@@ -37,14 +37,14 @@ class RegisterForm(FlaskForm):
         "Username",
         validators=[
             DataRequired(),
-            Length(min=4, max=20, message="Username must be between 4 and 20 characters."),
+            Length(min=4, max=10, message="Username must be between 4 and 10 characters."),
             # This Regex ensures the username is URL-safe (no spaces, no symbols like @ or !)
             Regexp(r'^\w+$', message="Username can only contain letters, numbers, or underscores.")
         ],
         render_kw={"class": "form-control", "placeholder": "Choose a unique username"}
     )
 
-    name = StringField("Name", validators=[DataRequired(), Length(max=20, message="Name cannot exceed 20 characters.")])
+    name = StringField("Name", validators=[DataRequired(), Length(max=10, message="Name cannot exceed 10 characters.")])
     
     password = PasswordField(
         "Password",
@@ -161,7 +161,7 @@ class SettingsForm(FlaskForm):
         "Username",
         validators=[
             DataRequired(),
-            Length(min=4, max=30, message="Username must be between 4 and 30 characters."),
+            Length(min=4, max=10, message="Username must be between 4 and 10 characters."),
             Regexp(r'^\w+$', message="Username can only contain letters, numbers, or underscores.")
         ],
         render_kw={"class": "form-control", "placeholder": "Update your handle"}
@@ -171,7 +171,7 @@ class SettingsForm(FlaskForm):
         "Display Name", 
         validators=[
             DataRequired(), 
-            Length(max=50, message="Name cannot exceed 50 characters.")
+            Length(max=10, message="Name cannot exceed 10 characters.")
         ],
         render_kw={"class": "form-control", "placeholder": "Update your display name"}
     )

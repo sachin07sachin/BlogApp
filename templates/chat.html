@@ -180,6 +180,12 @@ endblock %} {% block header %}
     border-bottom-right-radius: 2px;
   }
 
+  .sent .msg-text {
+    margin-right: 15px; 
+    display: block;      
+    box-sizing: border-box; 
+  }
+
   .received .msg-bubble {
     background: var(--received-bg);
     color: var(--received-text);
@@ -337,16 +343,98 @@ endblock %} {% block header %}
   }
 
   /* --- FIX: HIDE RAW DATES INITIALLY --- */
-.date-label, .local-time {
-  opacity: 0; /* Invisible by default */
-  transition: opacity 0.2s ease-in; /* Smooth fade-in */
-}
+  .date-label,
+  .local-time {
+    opacity: 0; /* Invisible by default */
+    transition: opacity 0.2s ease-in; /* Smooth fade-in */
+  }
 
-/* We will add this class via JS once the data is ready */
-.date-label.loaded, .local-time.loaded {
-  opacity: 1; 
-}
+  /* We will add this class via JS once the data is ready */
+  .date-label.loaded,
+  .local-time.loaded {
+    opacity: 1;
+  }
 
+  /* --- DELETED MESSAGE STATE --- */
+  .msg-bubble.deleted {
+    background: #f0f2f5 !important; /* Neutral Gray */
+    border: 1px solid #e1e4e8;
+    box-shadow: none;
+  }
+
+  .msg-bubble.deleted .msg-text {
+    font-style: italic;
+    color: #8c959f;
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: normal !important;
+    margin-right: 0 !important;
+  }
+
+  .msg-bubble.deleted .msg-meta,
+  .msg-bubble.deleted .msg-options-btn {
+    display: none !important; /* Hide time/checks/options */
+  }
+
+  /* --- MESSAGE OPTIONS DROPDOWN --- */
+  .msg-options {
+    position: absolute;
+    top: 0;
+    right: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+    height: 100%;
+    display: flex;
+    align-items: start;
+    padding: 6px 8px 0 0;
+    /* Create a gradient overlay so text doesn't clash */
+    background: linear-gradient(
+      to left,
+      rgba(0, 0, 0, 0.05) 0%,
+      transparent 100%
+    );
+    border-top-right-radius: 14px;
+  }
+
+  /* Show options on hover (Desktop) */
+  .msg-bubble:hover .msg-options {
+    opacity: 1;
+  }
+
+  .msg-options-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0;
+    cursor: pointer;
+  }
+  .msg-options-btn:hover {
+    opacity: 1;
+  }
+
+  /* Dropdown styling fix */
+  .dropdown-menu-chat {
+    min-width: 120px;
+    padding: 0.5rem 0;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .dropdown-item-chat {
+    padding: 6px 16px;
+    cursor: pointer;
+    color: #dc3545; /* Red for delete */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dropdown-item-chat:hover {
+    background-color: #fff5f5;
+  }
 </style>
 
 <header
@@ -388,16 +476,30 @@ endblock %} {% block header %}
 
         <div id="floatingDateLabel" class="floating-date-label">Today</div>
 
+        {#
         <div class="chat-body" id="chatHistory">
           <div id="loadingSpinner" class="text-center w-100 py-3 mb-3 d-none">
-            <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1.5rem; height: 1.5rem; border-width: 0.2em; position: relative; z-index: 1000;">
-                <span class="visually-hidden">Loading...</span>
+            <div
+              class="spinner-border spinner-border-sm text-primary"
+              role="status"
+              style="
+                width: 1.5rem;
+                height: 1.5rem;
+                border-width: 0.2em;
+                position: relative;
+                z-index: 1000;
+              "
+            >
+              <span class="visually-hidden">Loading...</span>
             </div>
-        </div>
+          </div>
           {% set ns = namespace(last_date=None) %} {% for msg in history %} {%
           set msg_date = msg.timestamp.strftime('%Y-%m-%d') %} {% if
           ns.last_date != msg_date %}
-          <div class="date-divider" data-observer-date="{{ msg.timestamp.isoformat() }}">
+          <div
+            class="date-divider"
+            data-observer-date="{{ msg.timestamp.isoformat() }}"
+          >
             <span class="date-label" data-date="{{ msg_date }}"
               >{{ msg_date }}</span
             >
@@ -406,17 +508,24 @@ endblock %} {% block header %}
 
           <div
             class="message-wrapper {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}"
+            id="msg-{{ msg.id }}"
             data-timestamp="{{ msg.timestamp.isoformat() }}"
           >
             <img src="{{ msg.sender.email | gravatar }}" class="avatar-chat" />
 
-            <div class="msg-bubble">
-              <span class="msg-text">{{ msg.body }}</span>
+            <div class="msg-bubble {% if msg.is_deleted %}deleted{% endif %}">
+              <span class="msg-text"
+                >{% if msg.is_deleted %} <i class="bi bi-slash-circle"></i> This
+                message was deleted {% else %} {{ msg.body }} {% endif %}</span
+              >
+
+              {% if not msg.is_deleted %}
               <div class="msg-meta">
                 <span
                   class="msg-time local-time"
                   data-utc="{{ msg.timestamp.isoformat() }}"
                 ></span>
+
                 {% if msg.sender_id == current_user.id %}
                 <span class="msg-tick">
                   {% if msg.is_read %}
@@ -427,6 +536,115 @@ endblock %} {% block header %}
                 </span>
                 {% endif %}
               </div>
+
+              {% if msg.sender_id == current_user.id %} {% set time_diff =
+              (datetime.now(timezone.utc) - msg.timestamp).total_seconds() /
+              3600 %} {% if time_diff < 12 %}
+              <div class="msg-options">
+                <div class="dropdown">
+                  <button
+                    class="msg-options-btn"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                  >
+                    <i class="bi bi-chevron-down"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-chat">
+                    <li>
+                      <a
+                        class="dropdown-item-chat"
+                        onclick="deleteMessage({{ msg.id }})"
+                      >
+                        <i class="bi bi-trash3"></i> Delete
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              {% endif %} {% endif %} {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        #}
+
+        <div class="chat-body" id="chatHistory">
+          <div id="loadingSpinner" class="text-center w-100 py-3 mb-3 d-none">
+            <div
+              class="spinner-border spinner-border-sm text-primary"
+              role="status"
+              style="
+                width: 1.5rem;
+                height: 1.5rem;
+                border-width: 0.2em;
+                position: relative;
+                z-index: 1000;
+              "
+            >
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+
+          {% for msg in history %}
+          <div
+            class="message-wrapper {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}"
+            id="msg-{{ msg.id }}"
+            data-timestamp="{{ msg.timestamp.isoformat() }}"
+          >
+            <img src="{{ msg.sender.email | gravatar }}" class="avatar-chat" />
+
+            <div class="msg-bubble {% if msg.is_deleted %}deleted{% endif %}">
+              {% if msg.is_deleted %}
+              <span class="msg-text">
+                <i class="bi bi-slash-circle"></i> This message was deleted
+              </span>
+              {% else %}
+              <span class="msg-text">{{ msg.body }}</span>
+              {% endif %} {% if not msg.is_deleted %}
+              <div class="msg-meta">
+                <span
+                  class="msg-time local-time"
+                  data-utc="{{ msg.timestamp.isoformat() }}"
+                ></span>
+
+                {% if msg.sender_id == current_user.id %}
+                <span class="msg-tick">
+                  {% if msg.is_read %}
+                  <i class="bi bi-check2-all tick-read" title="Read"></i>
+                  {% else %}
+                  <i class="bi bi-check2 tick-sent" title="Delivered"></i>
+                  {% endif %}
+                </span>
+                {% endif %}
+              </div>
+
+              {% if msg.sender_id == current_user.id %} {% set time_diff =
+              (datetime.now(timezone.utc) - msg.timestamp).total_seconds() /
+              3600 %} {% if time_diff < 12 %}
+              <div class="msg-options">
+                <div class="dropdown">
+                  <button
+                    class="msg-options-btn"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                  >
+                    <i class="bi bi-chevron-down"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-chat">
+                    <li>
+                      <a
+                        class="dropdown-item-chat"
+                        onclick="deleteMessage({{ msg.id }})"
+                      >
+                        <i class="bi bi-trash3"></i> Delete
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              {% endif %} {% endif %} {% endif %}
             </div>
           </div>
           {% endfor %}
@@ -492,7 +710,8 @@ endblock %} {% block header %}
     const CURRENT_USER_ID = "{{ current_user.id }}";
 
     // FIX 1: Secure URL assignment (Prevent JS Injection)
-    const RECIPIENT_PROFILE_URL = "{{ url_for('user_profile', username=recipient.username) }}";
+    const RECIPIENT_PROFILE_URL =
+      "{{ url_for('user_profile', username=recipient.username) }}";
     if (profileGroup) {
       profileGroup.onclick = function () {
         window.location.href = RECIPIENT_PROFILE_URL;
@@ -513,7 +732,7 @@ endblock %} {% block header %}
     let hasMoreHistory = true;
 
     // --- 1. INITIALIZATION & HELPERS ---
-    
+
     function getFriendlyDate(dateStr) {
       const date = new Date(dateStr);
       const today = new Date();
@@ -535,17 +754,17 @@ endblock %} {% block header %}
       div.className = "date-divider";
       div.setAttribute("data-observer-date", isoDateString);
       // Use getFriendlyDate to ensure "Today" / "Yesterday" logic is applied
-      div.innerHTML = `<span class="date-label" data-date="${isoDateString}">${getFriendlyDate(isoDateString)}</span>`;
+      div.innerHTML = `<span class="date-label loaded" data-date="${isoDateString}">${getFriendlyDate(isoDateString)}</span>`;
       return div;
     }
 
     // Helper: Format YYYY-MM-DD for strict comparison (Fixes Midnight Edge Case)
     function getComparisonDate(dateObj) {
       const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const day = String(dateObj.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
-  }
+    }
 
     // Format existing server-side rendered dates
     document.querySelectorAll(".date-label").forEach((el) => {
@@ -563,20 +782,20 @@ endblock %} {% block header %}
             hour12: true,
           })
           .toUpperCase();
-          el.dataset.localized = "true";
-          el.classList.add("loaded");
+      el.dataset.localized = "true";
+      el.classList.add("loaded");
     });
-
-    // --- SCROLL INITIALIZATION ---
-    chatHistory.scrollTop = chatHistory.scrollHeight;
 
     // FIX: AUTO-FILL CHECK
     // If messages aren't enough to create a scrollbar, load more immediately.
     setTimeout(() => {
-        if (chatHistory.scrollHeight <= chatHistory.clientHeight && hasMoreHistory) {
-            console.log("Content too short. Auto-loading history...");
-            loadOlderMessages();
-        }
+      if (
+        chatHistory.scrollHeight <= chatHistory.clientHeight &&
+        hasMoreHistory
+      ) {
+        console.log("Content too short. Auto-loading history...");
+        loadOlderMessages();
+      }
     }, 100);
 
     // --- 2. YOUR ORIGINAL SCROLL LOGIC (Manual Calculation) ---
@@ -589,7 +808,7 @@ endblock %} {% block header %}
 
       for (let child of children) {
         // FIX: Skip spinner in scroll scanning
-        if (child.id === 'loadingSpinner') continue;
+        if (child.id === "loadingSpinner") continue;
         if (!child.classList.contains("message-wrapper")) continue;
 
         const rect = child.getBoundingClientRect();
@@ -610,7 +829,7 @@ endblock %} {% block header %}
       scrollTimeout = setTimeout(() => {
         floatingDateLabel.classList.remove("show");
       }, 1000);
-      
+
       // Trigger Infinite Scroll logic if near top
       if (chatHistory.scrollTop < 50) {
         loadOlderMessages();
@@ -623,7 +842,7 @@ endblock %} {% block header %}
       isLoadingHistory = true;
 
       // 1. Show Spinner
-      if (loadingSpinner) loadingSpinner.classList.remove('d-none');
+      if (loadingSpinner) loadingSpinner.classList.remove("d-none");
 
       const oldScrollHeight = chatHistory.scrollHeight;
       const nextPage = currentPage + 1;
@@ -649,34 +868,36 @@ endblock %} {% block header %}
               null,
               msg.timestamp,
               msg.is_read ? "read" : "sent",
+              msg.id, // <--- PASS REAL ID
+              msg.is_deleted, // <--- PASS DELETED STATUS
             );
 
             // --- HISTORY DIVIDER LOGIC ---
             // Determine the actual top message/divider, IGNORING the spinner
             let currentTop = chatHistory.firstElementChild;
             if (currentTop && currentTop.id === "loadingSpinner") {
-                currentTop = currentTop.nextElementSibling;
+              currentTop = currentTop.nextElementSibling;
             }
 
             if (currentTop) {
               // 1. If Top is a DIVIDER, check if we fit under it
               if (currentTop.classList.contains("date-divider")) {
                 const rawDate = currentTop.getAttribute("data-observer-date");
-                
+
                 // CRITICAL SAFETY CHECK: Prevent "split of null" crash
                 if (rawDate) {
-                    const dividerDate = rawDate.split("T")[0];
-                    const msgDate = msg.timestamp.split("T")[0];
+                  const dividerDate = getComparisonDate(new Date(rawDate));
+                  const msgDate = getComparisonDate(new Date(msg.timestamp));
 
-                    if (dividerDate === msgDate) {
-                        // Same date. Insert message AFTER divider.
-                        if (currentTop.nextSibling) {
-                            chatHistory.insertBefore(msgEl, currentTop.nextSibling);
-                        } else {
-                            chatHistory.appendChild(msgEl);
-                        }
-                        return;
+                  if (dividerDate === msgDate) {
+                    // Same date. Insert message AFTER divider.
+                    if (currentTop.nextSibling) {
+                      chatHistory.insertBefore(msgEl, currentTop.nextSibling);
+                    } else {
+                      chatHistory.appendChild(msgEl);
                     }
+                    return;
+                  }
                 }
               }
 
@@ -684,52 +905,56 @@ endblock %} {% block header %}
               if (currentTop.classList.contains("message-wrapper")) {
                 const topTs = currentTop.getAttribute("data-timestamp");
                 if (topTs) {
-                    const topDate = topTs.split("T")[0];
-                    const msgDate = msg.timestamp.split("T")[0];
+                  // Safety Check: Ensure topTs exists before splitting
+                  const topDate = topTs
+                    ? getComparisonDate(new Date(topTs))
+                    : null;
+                  const msgDate = msg.timestamp
+                    ? getComparisonDate(new Date(msg.timestamp))
+                    : null;
 
-                    if (topDate !== msgDate) {
-                        const div = createDateDivider(topTs);
-                        chatHistory.insertBefore(div, currentTop);
-                    }
+                  if (topDate !== msgDate) {
+                    const div = createDateDivider(topTs);
+                    chatHistory.insertBefore(div, currentTop);
+                  }
                 }
               }
             }
 
             // INSERTION: Insert after spinner (so spinner stays at top)
             if (loadingSpinner && loadingSpinner.parentNode === chatHistory) {
-                 // Insert immediately after spinner (effectively top of messages)
-                 if (loadingSpinner.nextSibling) {
-                     chatHistory.insertBefore(msgEl, loadingSpinner.nextSibling);
-                 } else {
-                     chatHistory.appendChild(msgEl);
-                 }
+              // Insert immediately after spinner (effectively top of messages)
+              if (loadingSpinner.nextSibling) {
+                chatHistory.insertBefore(msgEl, loadingSpinner.nextSibling);
+              } else {
+                chatHistory.appendChild(msgEl);
+              }
             } else {
-                // Fallback if no spinner found
-                chatHistory.insertBefore(msgEl, chatHistory.firstChild);
+              // Fallback if no spinner found
+              chatHistory.insertBefore(msgEl, chatHistory.firstChild);
             }
           });
 
           // Final Clean: Add divider for the oldest loaded message if needed
           let finalTop = chatHistory.firstElementChild;
           if (finalTop && finalTop.id === "loadingSpinner") {
-              finalTop = finalTop.nextElementSibling;
+            finalTop = finalTop.nextElementSibling;
           }
 
           if (finalTop && finalTop.classList.contains("message-wrapper")) {
             const ts = finalTop.getAttribute("data-timestamp");
             if (ts) {
-                const div = createDateDivider(ts);
-                chatHistory.insertBefore(div, finalTop);
+              const div = createDateDivider(ts);
+              chatHistory.insertBefore(div, finalTop);
             }
           }
 
           currentPage = nextPage;
           hasMoreHistory = data.has_next;
-          
+
           // Maintain Scroll Position
           const newScrollHeight = chatHistory.scrollHeight;
           chatHistory.scrollTop = newScrollHeight - oldScrollHeight;
-          
         } else {
           hasMoreHistory = false;
         }
@@ -737,13 +962,16 @@ endblock %} {% block header %}
         console.error("History load error", err);
       } finally {
         isLoadingHistory = false;
-        
+
         // 2. Hide Spinner
-        if (loadingSpinner) loadingSpinner.classList.add('d-none');
-        
+        if (loadingSpinner) loadingSpinner.classList.add("d-none");
+
         // RECURSIVE CHECK: Auto-fill if screen still not full
-        if (chatHistory.scrollHeight <= chatHistory.clientHeight && hasMoreHistory) {
-            loadOlderMessages();
+        if (
+          chatHistory.scrollHeight <= chatHistory.clientHeight &&
+          hasMoreHistory
+        ) {
+          loadOlderMessages();
         }
       }
     }
@@ -784,6 +1012,7 @@ endblock %} {% block header %}
     // --- 5. SOCKET EVENTS & SEND LOGIC ---
     function showConnectionError() {
       connectionFlash.classList.add("show");
+      connectionFlash.scrollIntoView({ behavior: "smooth", block: "center" });
       setTimeout(() => {
         connectionFlash.classList.remove("show");
       }, 3000);
@@ -796,16 +1025,21 @@ endblock %} {% block header %}
         allDividers.length > 0 ? allDividers[allDividers.length - 1] : null;
 
       const todayIso = getComparisonDate(new Date()); // YYYY-MM-DD
-      let lastDividerDate = null;
+      let lastDividerLocal = null;
 
       if (lastDivider) {
         const rawDate = lastDivider.getAttribute("data-observer-date");
         // Safety check
-        if (rawDate) lastDividerDate = rawDate.split("T")[0];
+        if (rawDate) {
+          // Convert the stored UTC string to a Real Date Object (Browser Local Time)
+          const dateObj = new Date(rawDate);
+          // Extract the LOCAL YYYY-MM-DD from that object
+          lastDividerLocal = getComparisonDate(dateObj);
+        }
       }
 
       // FIX: Compare strict Dates, not Text "Today"
-      if (lastDividerDate !== todayIso) {
+      if (lastDividerLocal !== todayIso) {
         const div = createDateDivider(new Date().toISOString());
         chatHistory.appendChild(div);
       }
@@ -829,6 +1063,8 @@ endblock %} {% block header %}
       appendDateDividerIfNeeded();
 
       // 2. Add Message
+      // Note: We don't have the Real ID yet, so we pass null.
+      // The socket confirmation will update this later.
       const msgEl = createMessageElement(
         text,
         "sent",
@@ -836,6 +1072,8 @@ endblock %} {% block header %}
         tempId,
         null,
         "clock",
+        null, // No Real ID yet
+        false, // Not deleted
       );
       chatHistory.appendChild(msgEl);
 
@@ -869,6 +1107,8 @@ endblock %} {% block header %}
           null,
           data.timestamp,
           "read",
+          data.id, // <--- Pass ID from socket
+          data.is_deleted, // <--- Pass status
         );
         chatHistory.appendChild(msgEl);
 
@@ -879,9 +1119,46 @@ endblock %} {% block header %}
     });
 
     // TICK LOGIC:
+    // --- UPDATED: Message Sent Confirmation ---
+    // We need to update the TEMPORARY DOM element with the REAL ID so it can be deleted
     socket.on("message_sent_confirmation", function (data) {
-      const icon = document.getElementById(`tick-${data.temp_id}`);
-      if (icon) icon.className = "bi bi-check2 tick-sent";
+      // Find the element by temp ID
+      const wrapper = document.querySelector(
+        `[data-temp-id="${data.temp_id}"]`,
+      );
+      if (wrapper) {
+        // Update ID to real ID so delete works
+        wrapper.id = `msg-${data.real_id}`;
+
+        // Update Tick
+        const icon = wrapper.querySelector(`#tick-${data.temp_id}`);
+        if (icon) {
+          icon.className = "bi bi-check2 tick-sent";
+          icon.id = `tick-${data.real_id}`; // Update tick ID too
+        }
+
+        // RE-RENDER BUBBLE TO ADD DELETE BUTTON
+        // Since we didn't have the Real ID when creating, we didn't add the dropdown.
+        // Now we have it, we can inject the dropdown if < 12h.
+        const bubble = wrapper.querySelector(".msg-bubble");
+        if (bubble && !bubble.querySelector(".msg-options")) {
+          const optionsDiv = document.createElement("div");
+          optionsDiv.className = "msg-options";
+          optionsDiv.innerHTML = `
+                  <div class="dropdown">
+                      <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                          <i class="bi bi-chevron-down"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-chat">
+                          <li><a class="dropdown-item-chat" onclick="deleteMessage(${data.real_id})">
+                              <i class="bi bi-trash3"></i> Delete
+                          </a></li>
+                      </ul>
+                  </div>
+              `;
+          bubble.appendChild(optionsDiv);
+        }
+      }
     });
 
     socket.on("messages_read_update", function (data) {
@@ -914,9 +1191,15 @@ endblock %} {% block header %}
       tempId = null,
       utcTimestamp = null,
       status = "clock",
+      realId = null,
+      isDeleted = false,
     ) {
       const wrapper = document.createElement("div");
       wrapper.className = `message-wrapper ${type}`;
+
+      // Store ID for targeting
+      if (realId) wrapper.id = `msg-${realId}`;
+      if (tempId) wrapper.setAttribute("data-temp-id", tempId);
 
       const currentIso = utcTimestamp || new Date().toISOString();
       wrapper.setAttribute("data-timestamp", currentIso);
@@ -939,54 +1222,170 @@ endblock %} {% block header %}
           .toUpperCase();
       }
 
-      let statusHtml = "";
-      if (type === "sent") {
-        let iconClass = "bi bi-clock tick-clock"; // Default: Clock
-
-        // Logic for specific status inputs
-        if (status === "sent") iconClass = "bi bi-check2 tick-sent"; // Single Tick
-        if (status === "read") iconClass = "bi bi-check2-all tick-read"; // Double Tick
-
-        statusHtml = `<span class="msg-tick"><i id="tick-${tempId || ""}" class="${iconClass}"></i></span>`;
-      }
-
       const avatarImg = document.createElement("img");
       avatarImg.src = avatarUrl;
       avatarImg.className = "avatar-chat";
 
       const bubbleDiv = document.createElement("div");
-      bubbleDiv.className = "msg-bubble";
+      bubbleDiv.className = `msg-bubble ${isDeleted ? "deleted" : ""}`;
 
+      // 1. CONTENT LOGIC
       const textSpan = document.createElement("span");
       textSpan.className = "msg-text";
-      textSpan.textContent = text;
 
-      const metaDiv = document.createElement("div");
-      metaDiv.className = "msg-meta";
+      if (isDeleted) {
+        textSpan.innerHTML = `<i class="bi bi-slash-circle"></i> This message was deleted`;
+      } else {
+        textSpan.textContent = text;
+      }
+      bubbleDiv.appendChild(textSpan);
 
-      // UPDATE: Add 'loaded' class immediately so new messages appear instantly
-      const timeSpan = document.createElement("span");
-      timeSpan.className = "msg-time loaded"; // <--- ADDED 'loaded'
-      timeSpan.innerText = timeDisplay;
+      // 2. META LOGIC (Time + Ticks)
+      // Only create and append meta info if NOT deleted
+      if (!isDeleted) {
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "msg-meta";
 
-      // Use the span we created instead of innerHTML string to be safer/cleaner
-      metaDiv.appendChild(timeSpan);
-      
-      // Re-add the ticks manually since we aren't using innerHTML for the time anymore
-      if (statusHtml) {
+        // Time
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "msg-time loaded";
+        timeSpan.innerText = timeDisplay;
+        metaDiv.appendChild(timeSpan);
+
+        // Ticks (Only for sent messages)
+        if (type === "sent") {
+          let iconClass = "bi bi-clock tick-clock";
+          if (status === "sent") iconClass = "bi bi-check2 tick-sent";
+          if (status === "read") iconClass = "bi bi-check2-all tick-read";
+
           const tickSpan = document.createElement("span");
-          tickSpan.innerHTML = statusHtml; 
+          tickSpan.className = "msg-tick";
+          tickSpan.innerHTML = `<i id="tick-${tempId || realId}" class="${iconClass}"></i>`;
           metaDiv.appendChild(tickSpan);
+        }
+
+        bubbleDiv.appendChild(metaDiv); // Add meta to bubble
       }
 
-      bubbleDiv.appendChild(textSpan);
-      bubbleDiv.appendChild(metaDiv);
+      // 3. DELETE OPTION (Dropdown)
+      // Only show if: Sent by me, Not Deleted, Has Real ID, within 12 hours (Frontend check approx)
+      if (type === "sent" && !isDeleted && realId) {
+        const msgDate = new Date(currentIso);
+        const now = new Date();
+        const hoursDiff = (now - msgDate) / 1000 / 60 / 60;
+
+        if (hoursDiff < 12) {
+          const optionsDiv = document.createElement("div");
+          optionsDiv.className = "msg-options";
+          optionsDiv.innerHTML = `
+                  <div class="dropdown">
+                      <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                          <i class="bi bi-chevron-down"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-chat">
+                          <li><a class="dropdown-item-chat" onclick="deleteMessage(${realId})">
+                              <i class="bi bi-trash3"></i> Delete
+                          </a></li>
+                      </ul>
+                  </div>
+              `;
+          bubbleDiv.appendChild(optionsDiv);
+        }
+      }
 
       wrapper.appendChild(avatarImg);
       wrapper.appendChild(bubbleDiv);
 
       return wrapper;
     }
+
+    // --- NEW: GLOBAL DELETE FUNCTION ---
+    window.deleteMessage = function (msgId) {
+
+      // Use apiFetch from base.html if available, or fetch with CSRF
+      const csrfToken = "{{ csrf_token() }}";
+
+      // Assuming apiFetch is available in global scope from base.html, otherwise fallback to fetch
+      const fetchFn = window.apiFetch || fetch;
+
+      fetchFn(`/api/message/${msgId}/delete`, {
+        method: "POST",
+        headers: {
+          // apiFetch adds CSRF automatically, but if using standard fetch we need it
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+      })
+        .then((response) => {
+          // apiFetch handles redirections (e.g. 401) returning null
+          if (!response) return null;
+          return response.json();
+        })
+        .then((data) => {
+          if (data && data.error) {
+            alert(data.error);
+          }
+          // Success is handled by the socket event 'message_deleted'
+        })
+        .catch((err) => console.error(err));
+    };
+
+    // --- NEW: LISTEN FOR DELETION ---
+    socket.on("message_deleted", function (data) {
+      const msgId = data.message_id;
+      const wrapper = document.getElementById(`msg-${msgId}`);
+
+      if (wrapper) {
+        const bubble = wrapper.querySelector(".msg-bubble");
+        if (bubble) {
+          // Apply Deleted Styling
+          bubble.className = "msg-bubble deleted";
+
+          // Replace Content
+          const textSpan = bubble.querySelector(".msg-text");
+          textSpan.innerHTML = `<i class="bi bi-slash-circle"></i> This message was deleted`;
+
+          // Remove Meta & Options
+          const meta = bubble.querySelector(".msg-meta");
+          if (meta) meta.remove();
+          const options = bubble.querySelector(".msg-options");
+          if (options) options.remove();
+        }
+      }
+    });
+
+    // --- 7. NEW: RENDER INITIAL DIVIDERS (The Fix) ---
+    function renderInitialDividers() {
+      // Select only messages (ignore spinner)
+      const messages = Array.from(
+        chatHistory.querySelectorAll(".message-wrapper"),
+      );
+      let lastDateKey = null;
+
+      messages.forEach((msg) => {
+        const ts = msg.getAttribute("data-timestamp");
+        if (!ts) return;
+
+        // Convert UTC timestamp to LOCAL Date String (YYYY-MM-DD)
+        // This solves the 5:30 AM bug
+        const dateObj = new Date(ts);
+        const localDateKey = getComparisonDate(dateObj);
+
+        if (localDateKey !== lastDateKey) {
+          // Create divider
+          const div = createDateDivider(ts);
+          // Insert BEFORE the current message
+          chatHistory.insertBefore(div, msg);
+          lastDateKey = localDateKey;
+        }
+      });
+    }
+
+    // --- EXECUTE ON LOAD ---
+    renderInitialDividers();
+
+    // Scroll to bottom AFTER rendering dividers (to account for their height)
+    chatHistory.scrollTop = chatHistory.scrollHeight;
   });
 </script>
 {% endblock %}

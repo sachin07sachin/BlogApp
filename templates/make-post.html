@@ -149,9 +149,9 @@
             </div>
 
             <div class="input-group has-validation shadow-sm">
-              {% set input_class = "form-control is-invalid" if
-              form.img_url.errors or form.img_file.errors else "form-control" %}
-              {{ form.img_url(class=input_class, id="hybrid_input",
+              {# {% set input_class = "form-control is-invalid" if
+              form.img_url.errors or form.img_file.errors else "form-control" %}#}
+              {{ form.img_url(class="form-control", id="hybrid_input",
               placeholder="Paste an image URL or upload a file...",
               maxlength="") }}
 
@@ -171,10 +171,10 @@
                 id="btn-upload-trigger"
                 title="Choose file from device"
               >
-                <i class="bi bi-folder2-open me-1"></i>
+                <i class="bi bi-folder2-open"></i>
               </button>
 
-              {{ form.img_file(class="d-none", id="hidden_file_input") }} {% for
+              {{ form.img_file(class="d-none", id="hidden_file_input") }} {#{% for
               error in form.img_url.errors %}
               <div class="invalid-feedback d-block ms-1 my-1">
                 <strong>URL Error:</strong> {{ error }}
@@ -183,11 +183,11 @@
               <div class="invalid-feedback d-block ms-1 my-1">
                 <strong>File Error:</strong> {{ error }}
               </div>
-              {% endfor %}
+              {% endfor %}#}
             </div>
 
             <div class="form-text text-muted small mt-2">
-              Supported: jpg, png, jpeg, gif, webp. Best fit: <strong>16:9</strong> ratio.
+              Supported: png, jpeg, gif, webp. Best fit: <strong>16:9</strong> ratio. Max Size: <strong>8MB</strong>.
             </div>
           </div>
 
@@ -380,12 +380,22 @@
       hiddenFileInput.click();
     });
 
-    // 2. File Selection
+    // 2. File Selection (UPDATED WITH SIZE CHECK)
     hiddenFileInput.addEventListener("change", function (e) {
       const file = e.target.files[0];
+      const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB Limit (Matches Backend)
+
       if (file) {
+        // A. Check Type
         if (!allowedMimeTypes.includes(file.type)) {
-          showError("Invalid file type. Use JPG, PNG, or WebP.");
+          showError("Invalid file type. Use JPG, PNG, GIF, or WebP.");
+          hiddenFileInput.value = "";
+          return;
+        }
+
+        // B. Check Size (CRITICAL UPDATE)
+        if (file.size > MAX_FILE_SIZE) {
+          showError("File is too large. Maximum size is 8MB.");
           hiddenFileInput.value = "";
           return;
         }
@@ -423,22 +433,25 @@
         }
 
         if (url) {
-          // 1. Length Check (Matches Backend 500 char limit)
+          // 1. Length Check (Matches Backend 2048 char limit)
           if (url.length > 2048) {
-            showError("URL is too long (max 500 characters).");
+            showError("URL is too long (max 2048 characters).");
             return;
           }
 
-          // 2. URL Format Check (Basic)
-          if (url.startsWith("http")) {
-            showImage(url); // Attempt load (Onload/Onerror will trigger next)
+          // 2. Strict URL Format Check
+          // Matches http:// or https:// (case insensitive)
+          if (url.match(/^https?:\/\//i)) {
+            showImage(url); 
           } else {
-            resetPreview(); // While typing partial URL, just reset, don't error yet
+            // FIX: If it has text but isn't a URL, show error immediately
+            showError("Invalid URL. Must start with http:// or https://");
           }
         } else {
+          // Only reset if the field is actually empty
           resetPreview();
         }
-      }, 300),
+      }, 500), // Increased debounce to 500ms to avoid flashing errors while typing "https"
     );
 
     // 4. Clear Button
@@ -471,16 +484,32 @@
     }
 
     // --- INITIAL LOAD ---
+    // 1. Check for Backend Errors via Jinja
+    // We combine URL errors and File errors into one variable
+    {% set backend_error = None %}
+    {% if form.img_url.errors %}
+      {% set backend_error = form.img_url.errors[0] %}
+    {% elif form.img_file.errors %}
+      {% set backend_error = form.img_file.errors[0] %}
+    {% endif %}
+
+    // Inject into JS (safe string formatting)
+    const backendErrorMsg = {{ backend_error|tojson if backend_error else 'null' }};
     const initialSrc = previewImg.getAttribute("src");
-    if (initialSrc && initialSrc !== "" && initialSrc !== "None") {
-      showImage(initialSrc);
+
+    // 2. Priority Logic: Error > Image > Empty
+    if (backendErrorMsg) {
+        // If Flask says it's wrong (e.g. "File too large"), show that error immediately
+        showError(backendErrorMsg);
+    } else if (initialSrc && initialSrc !== "" && initialSrc !== "None") {
+        showImage(initialSrc);
     } else {
-      resetPreview();
+        resetPreview();
     }
 
     // --- AUTO-SCROLL TO ERRORS ---
     const flashMessage = document.querySelector(".alert");
-    const formError = document.querySelector(".invalid-feedback, .text-danger");
+    const formError = document.querySelector(".invalid-feedback, .text-danger, .image-preview-container.has-error");
     const target = flashMessage || formError;
 
     if (target && target.offsetParent !== null) {
