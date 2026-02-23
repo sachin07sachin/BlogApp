@@ -264,8 +264,8 @@
   </div>
 </main>
 {% endblock %} {% block scripts %}
-<script
-  src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js"
+<script 
+  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js" 
   referrerpolicy="origin"
 ></script>
 
@@ -274,6 +274,8 @@
     selector: "#body",
     height: 500,
     menubar: true,
+    promotion: false,
+    branding: false,
     plugins: [
       "advlist",
       "autolink",
@@ -302,6 +304,72 @@
       "body { font-family:Inter,Helvetica,Arial,sans-serif; font-size:14px; line-height: 1.6; }",
     automatic_uploads: true,
     file_picker_types: "image",
+
+    // --- CUSTOM UPLOAD HANDLER (The Bridge) ---
+    images_upload_handler: (blobInfo, progress) => new Promise((resolve, reject) => {
+      const file = blobInfo.blob();
+      
+      // 1. FRONTEND UX VALIDATION
+      const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+      if (file.size > MAX_SIZE) {
+        reject('Image is too large. Maximum size is 8MB.');
+        return;
+      }
+
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        reject('Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.');
+        return;
+      }
+
+      // 2. PREPARE UPLOAD
+      const xhr = new XMLHttpRequest();
+      xhr.withCredentials = false;
+      xhr.open('POST', '/upload-image');
+
+      // 3. SECURITY: Inject CSRF Token & Accept Header
+      const csrfToken = "{{ csrf_token() }}";
+      xhr.setRequestHeader("X-CSRFToken", csrfToken);
+      xhr.setRequestHeader("Accept", "application/json");
+
+      xhr.upload.onprogress = (e) => {
+        progress(e.loaded / e.total * 100);
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 403) {
+          reject({ message: 'HTTP Error: ' + xhr.status + ' - Session Expired or CSRF Invalid', remove: true });
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          let errorMsg = 'HTTP Error: ' + xhr.status;
+          try {
+            const errJson = JSON.parse(xhr.responseText);
+            if (errJson.error) errorMsg = errJson.error;
+          } catch(e) {}
+          reject(errorMsg);
+          return;
+        }
+
+        const json = JSON.parse(xhr.responseText);
+        if (!json || typeof json.location != 'string') {
+          reject('Invalid JSON response from server.');
+          return;
+        }
+
+        // 4. SUCCESS: Pass Cloudinary URL back to editor
+        resolve(json.location);
+      };
+
+      xhr.onerror = () => {
+        reject('Image upload failed due to a network error.');
+      };
+
+      const formData = new FormData();
+      formData.append('file', file, blobInfo.filename());
+      xhr.send(formData);
+    })
   });
 
   document.addEventListener("DOMContentLoaded", function () {

@@ -14,6 +14,7 @@ import filetype
 import requests
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import redis
 # Replaced native threading with SocketIO background tasks for Eventlet compatibility
 # from threading import Thread 
@@ -80,6 +81,9 @@ class Config:
     """Base Configuration Class."""
     SECRET_KEY = os.environ["SECRET_KEY"]
     CRON_SECRET = os.environ["CRON_SECRET"]
+
+    # Set CSRF token to expire after 12 hours (43200 seconds)
+    WTF_CSRF_TIME_LIMIT = 43200
     
     # Database (Fix Postgres URI for Render/Heroku)
     SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URL"].replace("postgres://", "postgresql://", 1)
@@ -958,6 +962,56 @@ def send_digest():
             
     logger.info("Digest Complete.")
     return "Digest Run Complete", 200
+
+@app.route("/cron/cleanup-images", methods=["POST"])
+@csrf.exempt
+@limiter.exempt 
+def cleanup_orphaned_images():
+    """
+    Weekly Cron Job: Garbage Collection for Cloudinary.
+    Deletes images uploaded to TinyMCE that were abandoned/deleted from posts.
+    """
+    secret = request.headers.get("X-Cron-Secret")
+    if not secret or secret != current_app.config["CRON_SECRET"]:
+        return "Unauthorized", 403
+
+    logger.info("Starting Cloudinary Garbage Collection...")
+
+    try:
+        # 1. Gather all active content from database
+        all_posts = db.session.execute(db.select(BlogPost.body, BlogPost.img_url)).all()
+        all_content_blob = " ".join([p.body for p in all_posts if p.body]) + " " + " ".join([p.img_url for p in all_posts if p.img_url])
+
+        next_cursor = None
+        deleted_count = 0
+        
+        while True:
+            # 2. Fetch all images from Cloudinary (500 at a time)
+            resources = cloudinary.api.resources(
+                type="upload", prefix="my_blog_posts/", max_results=500, next_cursor=next_cursor
+            )
+            
+            for resource in resources.get("resources", []):
+                public_id = resource['public_id']
+                
+                # 3. If public_id is missing from DB, and is older than 7 days (draft buffer)
+                if public_id not in all_content_blob:
+                    created_at = datetime.strptime(resource['created_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - created_at > timedelta(days=7):
+                        cloudinary.uploader.destroy(resource['public_id'])
+                        deleted_count += 1
+                        time.sleep(0.1) # Be polite to API
+
+            if 'next_cursor' not in resources:
+                break
+            next_cursor = resources['next_cursor']
+            
+        logger.info(f"Garbage Collection Complete. Deleted {deleted_count} images.")
+        return f"Cleanup Complete. Deleted {deleted_count} images.", 200
+
+    except Exception as e:
+        logger.error(f"Cleanup Failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
@@ -1961,6 +2015,34 @@ def load_more_comments(post_id):
     
     # Make sure you created 'templates/_comment_list.html' as discussed!
     return render_template("_comment_list.html", comments=pagination.items, current_user=current_user, post=post)
+
+# ==============================================================================
+# TINYMCE IMAGE UPLOAD API (BACKGROUND HANDLER)
+# ==============================================================================
+@app.route("/upload-image", methods=["POST"])
+@login_required
+def upload_image():
+    """
+    Background API endpoint specifically for TinyMCE editor.
+    Takes an image file, validates it, uploads to Cloudinary, and returns the URL.
+    """
+    file = request.files.get('file')
+    
+    if not file:
+        return jsonify({'error': 'No file provided'}), 400
+
+    # SECURITY: Validate Magic Bytes (Prevents malware)
+    if not validate_image_stream(file.stream):
+        return jsonify({'error': 'Invalid file format. Must be an image.'}), 400
+
+    # Upload to Cloudinary using existing helper
+    img_url = save_picture(file)
+    
+    if not img_url:
+        return jsonify({'error': 'Failed to upload image to cloud storage.'}), 500
+
+    # Return the exact JSON structure TinyMCE requires
+    return jsonify({'location': img_url})
 
 @app.route("/new-post", methods=["GET", "POST"])
 @login_required 

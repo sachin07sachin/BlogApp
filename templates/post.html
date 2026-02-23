@@ -738,8 +738,8 @@
   </div>
 </div>
 {% endblock %} {% block scripts %}
-<script
-  src="https://cdn.tiny.cloud/1/{{ config['TINYMCE_API_KEY'] }}/tinymce/6/tinymce.min.js"
+<script 
+  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js" 
   referrerpolicy="origin"
 ></script>
 
@@ -749,6 +749,8 @@
     height: 150,
     menubar: false,
     statusbar: false,
+    promotion: false,
+    branding: false,
     plugins: ["autolink", "lists", "link", "emoticons", "wordcount"],
     toolbar: "bold italic | bullist numlist | link emoticons",
     content_style:
