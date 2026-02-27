@@ -587,8 +587,21 @@ posts|length > 0 %}
                return;
             }
 
-            // Fetch specific user posts
-            apiFetch(`/user/${username}/load?page=${nextPage}`)
+            // --- THE FIX: SMART URL BUILDER ---
+            let currentUrl = new URL(window.location.href);
+            let fetchPath = `/user/${username}/load`; // Default for normal Profile view
+            
+            // If we reached this profile via a search filter (e.g. scope=john), use search API
+            if (currentUrl.pathname.startsWith('/search')) {
+                fetchPath = '/search/load';
+            }
+            
+            // Preserve filters and append page number
+            currentUrl.searchParams.set('page', nextPage);
+            let finalUrl = fetchPath + currentUrl.search;
+
+            // Fetch specific user posts (or their search results) using dynamic URL
+            apiFetch(finalUrl)
               .then(response => {
                   // 1. Safety: If redirected to login, response is null. Stop.
                   if (!response) return null;

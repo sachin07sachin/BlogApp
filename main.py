@@ -232,6 +232,13 @@ post_likes = db.Table(
     db.Column('post_id', db.Integer, db.ForeignKey('blog_posts.id', ondelete="CASCADE"), primary_key=True)
 )
 
+# Helper table for Blocking Users
+user_blocks = db.Table(
+    'user_blocks',
+    db.Column('blocker_id', db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
+    db.Column('blocked_id', db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"), primary_key=True)
+)
+
 class User(UserMixin, db.Model):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -279,9 +286,22 @@ class User(UserMixin, db.Model):
         lazy="dynamic"
     )
 
+    # Blocking Relationship
+    blocked = relationship(
+        'User', secondary=user_blocks,
+        primaryjoin=(user_blocks.c.blocker_id == id),
+        secondaryjoin=(user_blocks.c.blocked_id == id),
+        backref=db.backref('blocked_by', lazy='dynamic'),
+        lazy='dynamic'
+    )
+
     # Helper method to count unread messages
     def new_messages(self):
         return Message.query.filter_by(recipient=self, is_read=False).count()
+    
+    def is_blocking(self, user):
+        """Returns True if THIS user has blocked the target user."""
+        return self.blocked.filter(user_blocks.c.blocked_id == user.id).count() > 0
 
 
 class BlogPost(db.Model):
@@ -1506,56 +1526,42 @@ def logout():
 
 # ==============================================================================
 # SEARCH ROUTE (Advanced Filtering & Context-Aware Rendering)
-# ==============================================================================
-@app.route("/search")
-def search():
-    """
-    Handles complex search queries with multiple filters.
-    - Scope: 'me' (current user), specific username, or empty (global).
-    - Text: Matches title, subtitle, body, or author name.
-    - Date: Filters by Year, Month, Day.
-    - Sort: Newest or Oldest.
-    
-    Returns:
-    - profile.html: If searching within a specific user's scope.
-    - index.html: If searching globally.
-    """
-    # 1. Retrieve & Sanitize Parameters
-    query = request.args.get("q", "").strip()
-    sort_order = request.args.get("sort", "newest")
-    scope = request.args.get("scope", "").strip()
-    f_year = request.args.get("year", "")
-    f_month = request.args.get("month", "")
-    f_day = request.args.get("day", "")
+# =============================================================================
 
-    # 2. Fast Exit: If no filters are active, return to Home
-    active_filters = [query,sort_order, scope, f_year, f_month, f_day]
+def build_search_query(args):
+    """
+    Helper function to process search filters and return a SQLAlchemy statement.
+    Prevents DRY (Don't Repeat Yourself) violations between initial load and infinite scroll API.
+    """
+    query = args.get("q", "").strip()
+    sort_order = args.get("sort", "newest")
+    scope = args.get("scope", "").strip()
+    f_year = args.get("year", "")
+    f_month = args.get("month", "")
+    f_day = args.get("day", "")
+
+    active_filters = [query, sort_order, scope, f_year, f_month, f_day]
     if not any(f for f in active_filters if f):
-        return redirect(url_for("get_all_posts"))
+        return None, None, None
 
-    # 3. Build Base Query
     stmt = db.select(BlogPost).join(User)
     msg_parts = []
-    
-    # We track 'profile_user' to decide which template to render later
     profile_user = None 
 
-    # 4. Apply Scope Filtering
+    # Apply Scope
     if scope:
         if scope == "me" and current_user.is_authenticated:
-            # Case A: My Posts
             stmt = stmt.where(BlogPost.author_id == current_user.id)
             msg_parts.append("in my posts")
-            profile_user = current_user # We want to stay on My Profile
+            profile_user = current_user
         elif scope != "me":
-            # Case B: Specific User Posts
             target_user = db.session.scalar(db.select(User).where(User.username == scope))
             if target_user:
                 stmt = stmt.where(BlogPost.author_id == target_user.id)
                 msg_parts.append(f"in @{target_user.username}'s posts")
-                profile_user = target_user # We want to stay on Target User's Profile
+                profile_user = target_user
 
-    # 5. Apply Date Filtering
+    # Apply Date
     if f_year:
         stmt = stmt.where(extract('year', BlogPost.date) == f_year)
     if f_month:
@@ -1563,10 +1569,7 @@ def search():
     if f_day:
         stmt = stmt.where(extract('day', BlogPost.date) == f_day)
 
-    # 6. Generate Date Message
     if f_year or f_month or f_day:
-        # ... (Keep your existing Date Message logic here, it is correct) ...
-        # I am omitting the lines for brevity, but paste the previous Date Logic block here.
         m_name = f_month
         if f_month:
             try:
@@ -1588,7 +1591,7 @@ def search():
             
         msg_parts.append(date_str)
 
-    # 7. Apply Text Search
+    # Apply Text
     if query:
         msg_parts.append(f"matching '{query}'")
         stmt = stmt.where(
@@ -1600,38 +1603,66 @@ def search():
             )
         )
 
-    # 8. Apply Sorting
+    # Apply Sort
     if sort_order == "oldest":
         stmt = stmt.order_by(BlogPost.date.asc())
     else:
         stmt = stmt.order_by(BlogPost.date.desc())
 
-    # 9. Execute Query
-    posts = db.session.scalars(stmt).all()
-    
-    # 10. Finalize Feedback Message
     search_message = "Found results " + " ".join(msg_parts) if msg_parts else "All Posts"
+    return stmt, profile_user, search_message
 
-    # 11. SMART RENDER (The Fix)
-    # If we are scoped to a user, render 'profile.html'. 
-    # Otherwise, render 'index.html'.
+@app.route("/search")
+def search():
+    stmt, profile_user, search_message = build_search_query(request.args)
     
+    if stmt is None:
+        return redirect(url_for("get_all_posts"))
+
+    # Paginator Logic!
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+
     if profile_user:
-        # Render Profile with results
-        # Note: profile.html expects 'posts', index.html expects 'all_posts'
+        # Profile specific logic
+        can_message = False
+        if current_user.is_authenticated and current_user.id != profile_user.id:
+            has_block = current_user.is_blocking(profile_user) or profile_user.is_blocking(current_user)
+            if (profile_user.allow_dms or current_user.role == "admin") and not has_block:
+                can_message = True
+
         return render_template(
             "profile.html", 
             user=profile_user, 
-            posts=posts, 
-            search_message=search_message
+            posts=pagination.items, 
+            has_next=pagination.has_next, 
+            next_page=pagination.next_num,
+            search_message=search_message,
+            can_message=can_message
         )
     else:
-        # Render Home with results
         return render_template(
             "index.html", 
-            all_posts=posts, 
+            all_posts=pagination.items, 
+            has_next=pagination.has_next, 
+            next_page=pagination.next_num,
             search_message=search_message
         )
+
+# --- NEW API ROUTE (Search Infinite Scroll) ---
+@app.route("/search/load")
+def load_search_posts():
+    stmt, _, _ = build_search_query(request.args)
+    if stmt is None:
+        return "", 404
+        
+    page = request.args.get('page', 1, type=int)
+    per_page = 9
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    # Render just the cards
+    return render_template("_post_list.html", posts=pagination.items)
 
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
@@ -1671,11 +1702,6 @@ def settings():
         
     return render_template("settings.html", form=form, delete_form=delete_form)
 
-# @app.route("/")
-# def get_all_posts():
-#     posts = db.session.scalars(db.select(BlogPost).order_by(BlogPost.date.desc())).all()
-#     return render_template("index.html", all_posts=posts)
-
 # --- UPDATED HOME ROUTE (INITIAL LOAD) ---
 @app.route("/")
 def get_all_posts():
@@ -1709,18 +1735,6 @@ def load_posts():
     # Return JUST the list of cards
     return render_template("_post_list.html", posts=pagination.items)
 
-# @app.route("/user/<string:username>")
-# def user_profile(username):
-#     user = User.query.filter_by(username=username).first_or_404()
-#     posts = BlogPost.query.filter_by(author=user).order_by(BlogPost.date.desc()).all()
-    
-#     can_message = False
-#     if current_user.is_authenticated and current_user.id != user.id:
-#         if user.allow_dms or current_user.role == "admin":
-#             can_message = True
-            
-#     return render_template("profile.html", user=user, posts=posts, can_message=can_message)
-
 # --- UPDATED PROFILE ROUTE (Page 1) ---
 @app.route("/user/<string:username>")
 def user_profile(username):
@@ -1738,7 +1752,8 @@ def user_profile(username):
     
     can_message = False
     if current_user.is_authenticated and current_user.id != user.id:
-        if user.allow_dms or current_user.role == "admin":
+        has_block = current_user.is_blocking(user) or user.is_blocking(current_user)
+        if (user.allow_dms or current_user.role == "admin") and not has_block:
             can_message = True
             
     return render_template("profile.html", 
@@ -1763,16 +1778,6 @@ def load_user_posts(username):
     
     # Reuse the same partial template!
     return render_template("_post_list.html", posts=pagination.items)
-
-@app.route("/my-posts")
-@login_required
-def get_user_posts():
-    posts = db.session.scalars(
-        db.select(BlogPost)
-        .where(BlogPost.author_id == current_user.id)
-        .order_by(BlogPost.date.desc())
-    ).all()
-    return render_template("index.html", all_posts=posts, page_title="My Posts")
 
 @app.route("/like/<int:post_id>", methods=["POST"])
 @login_required
@@ -2593,6 +2598,32 @@ def inbox():
 
     return render_template('inbox.html', conversations=conversations, current_date=datetime.now(timezone.utc).date())
 
+@app.route("/api/block/<int:user_id>", methods=["POST"])
+@login_required
+def toggle_block_user(user_id):
+    if user_id == current_user.id:
+        return jsonify({"error": "You cannot block yourself"}), 400
+        
+    target_user = db.session.get(User, user_id)
+    if not target_user:
+        return jsonify({"error": "User not found"}), 404
+
+    is_currently_blocking = current_user.is_blocking(target_user)
+
+    try:
+        with safe_commit():
+            if is_currently_blocking:
+                current_user.blocked.remove(target_user)
+                action = "unblocked"
+            else:
+                current_user.blocked.append(target_user)
+                action = "blocked"
+                
+        return jsonify({"success": True, "action": action})
+    except Exception as e:
+        logger.error(f"Error toggling block status: {e}")
+        return jsonify({"error": "Server error"}), 500
+
 @app.route('/chat/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 def chat(user_id):
@@ -2602,8 +2633,15 @@ def chat(user_id):
     if recipient.id == current_user.id:
         flash("You cannot chat with yourself.", "warning")
         return redirect(url_for('user_profile', username=current_user.username))
+    
+    # Check if either user has blocked the other
+    has_block = current_user.is_blocking(recipient) or recipient.is_blocking(current_user)
 
-    can_message = recipient.allow_dms or current_user.role == "admin" or recipient.role == "admin"
+    can_message = (recipient.allow_dms or current_user.role == "admin") and not has_block
+
+    # We pass 'is_blocking_them' to the template so we know whether to show "Block" or "Unblock" in the UI
+    is_blocking_them = current_user.is_blocking(recipient)
+
     # if not can_message:
     #     flash("This user does not accept private messages.", "warning")
     #     return redirect(url_for('user_profile', username=recipient.username))
@@ -2645,7 +2683,7 @@ def chat(user_id):
             'timestamp': datetime.now(timezone.utc).isoformat()
         }, room=f"user_{user_id}")
 
-    return render_template('chat.html', form=form, recipient=recipient, history=history, can_message=can_message)
+    return render_template('chat.html', form=form, recipient=recipient, history=history, can_message=can_message, is_blocking_them=is_blocking_them)
 
 # --- NEW ROUTE: Infinite Scroll API ---
 @app.route('/api/chat/<int:user_id>/history')
@@ -2912,8 +2950,9 @@ def handle_socket_message(data):
 
     recipient = db.session.get(User, recipient_id)
 
-    # --- NEW SECURITY CHECK ---
-    can_message = recipient.allow_dms or current_user.role == "admin" or recipient.role == "admin"
+    # SECURITY CHECK
+    has_block = current_user.is_blocking(recipient) or recipient.is_blocking(current_user)
+    can_message = (recipient.allow_dms or current_user.role == "admin") and not has_block
     if not can_message:
         return # Silently fail or emit an error event
 

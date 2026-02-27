@@ -56,7 +56,7 @@ endblock %} {% block header %}
   .profile-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 4px;
     cursor: pointer;
   }
 
@@ -181,9 +181,9 @@ endblock %} {% block header %}
   }
 
   .sent .msg-text {
-    margin-right: 15px; 
-    display: block;      
-    box-sizing: border-box; 
+    margin-right: 15px;
+    display: block;
+    box-sizing: border-box;
   }
 
   .received .msg-bubble {
@@ -317,7 +317,7 @@ endblock %} {% block header %}
     transform: scale(0.95);
   }
 
-  /* --- CUSTOM FLASH MESSAGE (Toast) --- */
+  /* --- DYNAMIC FLASH MESSAGE (Toast) --- */
   .chat-flash-message {
     position: absolute;
     top: 10px;
@@ -328,7 +328,6 @@ endblock %} {% block header %}
     max-width: 400px;
     padding: 10px 15px;
     border-radius: 8px;
-    background-color: #dc3545; /* Bootstrap Danger Red */
     color: white;
     font-size: 14px;
     text-align: center;
@@ -336,6 +335,12 @@ endblock %} {% block header %}
     opacity: 0;
     transition: opacity 0.3s ease-in-out;
     pointer-events: none;
+  }
+  .chat-flash-message.flash-danger {
+    background-color: #dc3545; /* Bootstrap Danger Red */
+  }
+  .chat-flash-message.flash-success {
+    background-color: #198754; /* Bootstrap Success Green */
   }
   .chat-flash-message.show {
     opacity: 1;
@@ -457,117 +462,56 @@ endblock %} {% block header %}
   <div class="row justify-content-center">
     <div class="col-md-11 col-lg-9">
       <div class="chat-card">
-        <div id="connectionFlash" class="chat-flash-message">
-          <i class="bi bi-wifi-off me-2"></i> Connection lost. Please check your
-          internet.
+        <div id="customFlash" class="chat-flash-message flash-danger">
+          <span id="customFlashIcon" class="me-2"></span>
+          <span id="customFlashText"></span>
         </div>
 
         <div class="chat-header">
           <div class="profile-group" id="profileGroup">
             <img src="{{ recipient.email | gravatar }}" class="avatar-header" />
-            <div class="user-info ms-3">
+            <div class="user-info ms-1">
               <h5>{{ recipient.name }}</h5>
               <p class="status-text" id="userStatus">
                 @{{ recipient.username }}
               </p>
             </div>
           </div>
+
+          <div class="dropdown">
+            <button
+              class="btn btn-link text-dark text-decoration-none"
+              style="margin-right: -30px;"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <i class="bi bi-three-dots-vertical fs-5"></i>
+            </button>
+            <ul
+              class="dropdown-menu dropdown-menu-end shadow border-0"
+              style="border-radius: 12px"
+            >
+              <li>
+                <a
+                  class="dropdown-item d-flex align-items-center gap-2"
+                  href="#"
+                  id="toggleBlockBtn"
+                >
+                  {% if is_blocking_them %}
+                  <i class="bi bi-unlock text-success"></i>
+                  <span id="blockBtnText">Unblock User</span>
+                  {% else %}
+                  <i class="bi bi-person-x text-danger"></i>
+                  <span id="blockBtnText" class="text-danger">Block User</span>
+                  {% endif %}
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div id="floatingDateLabel" class="floating-date-label">Today</div>
-
-        {#
-        <div class="chat-body" id="chatHistory">
-          <div id="loadingSpinner" class="text-center w-100 py-3 mb-3 d-none">
-            <div
-              class="spinner-border spinner-border-sm text-primary"
-              role="status"
-              style="
-                width: 1.5rem;
-                height: 1.5rem;
-                border-width: 0.2em;
-                position: relative;
-                z-index: 1000;
-              "
-            >
-              <span class="visually-hidden">Loading...</span>
-            </div>
-          </div>
-          {% set ns = namespace(last_date=None) %} {% for msg in history %} {%
-          set msg_date = msg.timestamp.strftime('%Y-%m-%d') %} {% if
-          ns.last_date != msg_date %}
-          <div
-            class="date-divider"
-            data-observer-date="{{ msg.timestamp.isoformat() }}"
-          >
-            <span class="date-label" data-date="{{ msg_date }}"
-              >{{ msg_date }}</span
-            >
-          </div>
-          {% set ns.last_date = msg_date %} {% endif %}
-
-          <div
-            class="message-wrapper {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}"
-            id="msg-{{ msg.id }}"
-            data-timestamp="{{ msg.timestamp.isoformat() }}"
-          >
-            <img src="{{ msg.sender.email | gravatar }}" class="avatar-chat" />
-
-            <div class="msg-bubble {% if msg.is_deleted %}deleted{% endif %}">
-              <span class="msg-text"
-                >{% if msg.is_deleted %} <i class="bi bi-slash-circle"></i> This
-                message was deleted {% else %} {{ msg.body }} {% endif %}</span
-              >
-
-              {% if not msg.is_deleted %}
-              <div class="msg-meta">
-                <span
-                  class="msg-time local-time"
-                  data-utc="{{ msg.timestamp.isoformat() }}"
-                ></span>
-
-                {% if msg.sender_id == current_user.id %}
-                <span class="msg-tick">
-                  {% if msg.is_read %}
-                  <i class="bi bi-check2-all tick-read" title="Read"></i>
-                  {% else %}
-                  <i class="bi bi-check2 tick-sent" title="Delivered"></i>
-                  {% endif %}
-                </span>
-                {% endif %}
-              </div>
-
-              {% if msg.sender_id == current_user.id %} {% set time_diff =
-              (datetime.now(timezone.utc) - msg.timestamp).total_seconds() /
-              3600 %} {% if time_diff < 12 %}
-              <div class="msg-options">
-                <div class="dropdown">
-                  <button
-                    class="msg-options-btn"
-                    type="button"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false"
-                  >
-                    <i class="bi bi-chevron-down"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-chat">
-                    <li>
-                      <a
-                        class="dropdown-item-chat"
-                        onclick="deleteMessage({{ msg.id }})"
-                      >
-                        <i class="bi bi-trash3"></i> Delete
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-              {% endif %} {% endif %} {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        #}
 
         <div class="chat-body" id="chatHistory">
           <div id="loadingSpinner" class="text-center w-100 py-3 mb-3 d-none">
@@ -675,10 +619,48 @@ endblock %} {% block header %}
         <div class="p-3 text-center bg-light border-top text-muted small">
           <i class="bi bi-lock-fill me-1"></i>
           {% if recipient.name == "Deleted User" %} This account has been
-          deleted. You cannot reply to this conversation. {% else %} This user
-          does not accept private messages. {% endif %}
+          deleted. You cannot reply to this conversation. {% elif
+          is_blocking_them %} You have blocked this user. Unblock them from the
+          menu above to send messages. {% else %} This user does not accept
+          private messages. {% endif %}
         </div>
         {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="blockUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger">Block User?</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-muted">
+        Are you sure you want to block <strong>{{ recipient.name }}</strong>?
+        They will no longer be able to send you private messages.
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button
+          type="button"
+          class="btn btn-light rounded-pill px-4"
+          data-bs-dismiss="modal"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger rounded-pill px-4"
+          id="confirmBlockBtn"
+        >
+          Block User
+        </button>
       </div>
     </div>
   </div>
@@ -703,11 +685,11 @@ endblock %} {% block header %}
     const notifySound = document.getElementById("notifySound");
     const floatingDateLabel = document.getElementById("floatingDateLabel");
     const profileGroup = document.getElementById("profileGroup");
-    const connectionFlash = document.getElementById("connectionFlash");
     const loadingSpinner = document.getElementById("loadingSpinner"); // NEW: Spinner Element
 
     const RECIPIENT_ID = "{{ recipient.id }}";
     const CURRENT_USER_ID = "{{ current_user.id }}";
+    const IS_BLOCKING_THEM = {{ 'true' if is_blocking_them else 'false' }};
 
     // FIX 1: Secure URL assignment (Prevent JS Injection)
     const RECIPIENT_PROFILE_URL =
@@ -730,6 +712,99 @@ endblock %} {% block header %}
     let currentPage = 1;
     let isLoadingHistory = false;
     let hasMoreHistory = true;
+
+    // ==========================================
+    // UI HELPERS (Flash Messages)
+    // ==========================================
+    function showFlashMessage(message, type = "danger") {
+      const flash = document.getElementById("customFlash");
+      const flashText = document.getElementById("customFlashText");
+      const flashIcon = document.getElementById("customFlashIcon");
+
+      // Set class based on type
+      flash.className = `chat-flash-message flash-${type} show`;
+      flashIcon.className =
+        type === "danger"
+          ? "bi bi-exclamation-triangle-fill"
+          : "bi bi-check-circle-fill";
+      flashText.innerText = message;
+
+      // Ensure it's in view
+      flash.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      setTimeout(() => {
+        flash.classList.remove("show");
+      }, 3000);
+    }
+
+    // Replace old connection alert
+    function showConnectionError() {
+      showFlashMessage(
+        "Connection lost. Please check your internet.",
+        "danger",
+      );
+    }
+
+    // ==========================================
+    // BLOCK USER LOGIC (Using Modal)
+    // ==========================================
+    const toggleBlockBtn = document.getElementById("toggleBlockBtn");
+    let blockModalInstance = null;
+    
+    if (toggleBlockBtn) {
+      // Safely initialize the Bootstrap Modal
+      const modalEl = document.getElementById('blockUserModal');
+      if (modalEl) blockModalInstance = new bootstrap.Modal(modalEl);
+
+      toggleBlockBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        
+        // --- UPDATED: Use the robust state variable instead of text check ---
+        if (!IS_BLOCKING_THEM) {
+          // Show the Modal if we want to Block
+          if(blockModalInstance) blockModalInstance.show();
+        } else {
+          // If we are unblocking, just do it directly (No friction)
+          executeBlockToggle();
+        }
+      });
+    }
+
+    const confirmBlockBtn = document.getElementById("confirmBlockBtn");
+    if (confirmBlockBtn) {
+      confirmBlockBtn.addEventListener("click", function () {
+        // Hide modal and execute
+        if (blockModalInstance) blockModalInstance.hide();
+        executeBlockToggle();
+      });
+    }
+
+    async function executeBlockToggle() {
+      const csrfToken = "{{ csrf_token() }}";
+      const fetchFn = window.apiFetch || fetch;
+
+      try {
+        const response = await fetchFn(`/api/block/${RECIPIENT_ID}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+        });
+
+        if (!response) return; // Handled by apiFetch
+        const data = await response.json();
+
+        if (data.success) {
+          window.location.reload();
+        } else {
+          showFlashMessage(data.error || "Something went wrong.", "danger");
+        }
+      } catch (err) {
+        console.error("Block action failed", err);
+        showFlashMessage("Network error occurred.", "danger");
+      }
+    }
 
     // --- 1. INITIALIZATION & HELPERS ---
 
@@ -977,46 +1052,41 @@ endblock %} {% block header %}
     }
 
     // --- 4. INPUT HANDLERS ---
-    messageInput.addEventListener("input", function () {
-      this.style.height = "auto";
-      const newH = this.scrollHeight;
-      const maxH = 120;
-      this.style.height = (newH > maxH ? maxH : newH) + "px";
-      this.style.overflowY = newH > maxH ? "auto" : "hidden";
+    if (messageInput) {
+      messageInput.addEventListener("input", function () {
+        this.style.height = "auto";
+        const newH = this.scrollHeight;
+        const maxH = 120;
+        this.style.height = (newH > maxH ? maxH : newH) + "px";
+        this.style.overflowY = newH > maxH ? "auto" : "hidden";
 
-      if (this.value.trim().length > 0) {
-        if (!isTypingSignalSent) {
-          socket.emit("typing", { recipient_id: RECIPIENT_ID });
-          isTypingSignalSent = true;
+        if (this.value.trim().length > 0) {
+          if (!isTypingSignalSent) {
+            socket.emit("typing", { recipient_id: RECIPIENT_ID });
+            isTypingSignalSent = true;
+          }
+          if (typingTimeout) clearTimeout(typingTimeout);
+          typingTimeout = setTimeout(() => {
+            socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+            isTypingSignalSent = false;
+          }, 2000);
+        } else {
+          if (isTypingSignalSent) {
+            socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+            isTypingSignalSent = false;
+          }
         }
-        if (typingTimeout) clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-          socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-          isTypingSignalSent = false;
-        }, 2000);
-      } else {
-        if (isTypingSignalSent) {
-          socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-          isTypingSignalSent = false;
-        }
-      }
-    });
+      });
 
-    messageInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        chatForm.dispatchEvent(new Event("submit"));
-      }
-    });
+      messageInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          chatForm.dispatchEvent(new Event("submit"));
+        }
+      });
+    }
 
     // --- 5. SOCKET EVENTS & SEND LOGIC ---
-    function showConnectionError() {
-      connectionFlash.classList.add("show");
-      connectionFlash.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => {
-        connectionFlash.classList.remove("show");
-      }, 3000);
-    }
 
     // Shared logic to check/append date divider for NEW messages
     function appendDateDividerIfNeeded() {
@@ -1045,54 +1115,56 @@ endblock %} {% block header %}
       }
     }
 
-    chatForm.addEventListener("submit", function (e) {
-      e.preventDefault();
+    if (chatForm) {
+      chatForm.addEventListener("submit", function (e) {
+        e.preventDefault();
 
-      // FIX 2: Check Connection & Show Flash
-      if (!socket.connected) {
-        showConnectionError();
-        return;
-      }
+        // FIX 2: Check Connection & Show Flash
+        if (!socket.connected) {
+          showConnectionError();
+          return;
+        }
 
-      const text = messageInput.value.trim();
-      if (!text) return;
+        const text = messageInput.value.trim();
+        if (!text) return;
 
-      const tempId = Date.now();
+        const tempId = Date.now();
 
-      // 1. Check/Add Divider FIRST
-      appendDateDividerIfNeeded();
+        // 1. Check/Add Divider FIRST
+        appendDateDividerIfNeeded();
 
-      // 2. Add Message
-      // Note: We don't have the Real ID yet, so we pass null.
-      // The socket confirmation will update this later.
-      const msgEl = createMessageElement(
-        text,
-        "sent",
-        CURRENT_USER_AVATAR,
-        tempId,
-        null,
-        "clock",
-        null, // No Real ID yet
-        false, // Not deleted
-      );
-      chatHistory.appendChild(msgEl);
+        // 2. Add Message
+        // Note: We don't have the Real ID yet, so we pass null.
+        // The socket confirmation will update this later.
+        const msgEl = createMessageElement(
+          text,
+          "sent",
+          CURRENT_USER_AVATAR,
+          tempId,
+          null,
+          "clock",
+          null, // No Real ID yet
+          false, // Not deleted
+        );
+        chatHistory.appendChild(msgEl);
 
-      messageInput.value = "";
-      messageInput.style.height = "auto";
-      chatHistory.scrollTop = chatHistory.scrollHeight;
+        messageInput.value = "";
+        messageInput.style.height = "auto";
+        chatHistory.scrollTop = chatHistory.scrollHeight;
 
-      socket.emit("send_message", {
-        recipient_id: RECIPIENT_ID,
-        body: text,
-        temp_id: tempId,
+        socket.emit("send_message", {
+          recipient_id: RECIPIENT_ID,
+          body: text,
+          temp_id: tempId,
+        });
+
+        if (typingTimeout) clearTimeout(typingTimeout);
+        if (isTypingSignalSent) {
+          socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
+          isTypingSignalSent = false;
+        }
       });
-
-      if (typingTimeout) clearTimeout(typingTimeout);
-      if (isTypingSignalSent) {
-        socket.emit("stop_typing", { recipient_id: RECIPIENT_ID });
-        isTypingSignalSent = false;
-      }
-    });
+    }
 
     socket.on("new_message", function (data) {
       if (String(data.sender_id) === RECIPIENT_ID) {
@@ -1145,17 +1217,17 @@ endblock %} {% block header %}
           const optionsDiv = document.createElement("div");
           optionsDiv.className = "msg-options";
           optionsDiv.innerHTML = `
-                  <div class="dropdown">
-                      <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                          <i class="bi bi-chevron-down"></i>
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-chat">
-                          <li><a class="dropdown-item-chat" onclick="deleteMessage(${data.real_id})">
-                              <i class="bi bi-trash3"></i> Delete
-                          </a></li>
-                      </ul>
-                  </div>
-              `;
+                    <div class="dropdown">
+                        <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-chat">
+                            <li><a class="dropdown-item-chat" onclick="deleteMessage(${data.real_id})">
+                                <i class="bi bi-trash3"></i> Delete
+                            </a></li>
+                        </ul>
+                    </div>
+                `;
           bubble.appendChild(optionsDiv);
         }
       }
@@ -1278,17 +1350,17 @@ endblock %} {% block header %}
           const optionsDiv = document.createElement("div");
           optionsDiv.className = "msg-options";
           optionsDiv.innerHTML = `
-                  <div class="dropdown">
-                      <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                          <i class="bi bi-chevron-down"></i>
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-chat">
-                          <li><a class="dropdown-item-chat" onclick="deleteMessage(${realId})">
-                              <i class="bi bi-trash3"></i> Delete
-                          </a></li>
-                      </ul>
-                  </div>
-              `;
+                    <div class="dropdown">
+                        <button class="msg-options-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-chat">
+                            <li><a class="dropdown-item-chat" onclick="deleteMessage(${realId})">
+                                <i class="bi bi-trash3"></i> Delete
+                            </a></li>
+                        </ul>
+                    </div>
+                `;
           bubbleDiv.appendChild(optionsDiv);
         }
       }
@@ -1301,7 +1373,6 @@ endblock %} {% block header %}
 
     // --- NEW: GLOBAL DELETE FUNCTION ---
     window.deleteMessage = function (msgId) {
-
       // Use apiFetch from base.html if available, or fetch with CSRF
       const csrfToken = "{{ csrf_token() }}";
 
@@ -1323,11 +1394,16 @@ endblock %} {% block header %}
         })
         .then((data) => {
           if (data && data.error) {
-            alert(data.error);
+            // FIX: Replaced native alert with custom flash message
+            showFlashMessage(data.error, "danger");
           }
           // Success is handled by the socket event 'message_deleted'
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          console.error(err);
+          // FIX: Replaced silent fail with custom flash message
+          showFlashMessage("Network error occurred.", "danger");
+        });
     };
 
     // --- NEW: LISTEN FOR DELETION ---

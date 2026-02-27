@@ -594,8 +594,27 @@
           isLoading = true;
           const nextPage = sentinel.getAttribute("data-next-page");
 
-          // Fetch the next page of posts
-          apiFetch(`/posts/load?page=${nextPage}`)
+          if (!nextPage || nextPage === "None") {
+             sentinel.remove();
+             if (endMessage) endMessage.style.display = "block";
+             return;
+          }
+
+          // --- THE FIX: SMART URL BUILDER ---
+          let currentUrl = new URL(window.location.href);
+          let fetchPath = '/posts/load'; // Default for global Home feed
+          
+          // If the current browser URL is /search, hit the search API instead
+          if (currentUrl.pathname.startsWith('/search')) {
+              fetchPath = '/search/load';
+          }
+          
+          // Preserve search filters (like ?q=Python) and append the page number
+          currentUrl.searchParams.set('page', nextPage);
+          let finalUrl = fetchPath + currentUrl.search; 
+
+          // Fetch the next page of posts using the dynamically generated URL
+          apiFetch(finalUrl)
             .then(response => {
                 // Safety: If redirected to login (session dead), response is null
                 if (!response) return null;
@@ -606,7 +625,7 @@
                 // Add new cards to the grid
                 container.insertAdjacentHTML('beforeend', html);
                 
-                // Re-run time formatting for the new dates (if you have that script)
+                // Re-run time formatting for the new dates
                 if (window.localizeTimes) window.localizeTimes(container);
 
                 // Prepare for the next page
@@ -621,6 +640,7 @@
             .catch(err => {
               console.error("Error loading posts:", err);
               sentinel.style.display = "none"; 
+              isLoading = false;
             });
         }
       }, { rootMargin: "200px" }); // Start loading 200px before reaching the bottom
