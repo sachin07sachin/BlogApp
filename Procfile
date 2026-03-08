@@ -1,1 +1,1 @@
-web: flask --app main db upgrade && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT main:app
+web: flask --app main db upgrade && gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:$PORT main:app
