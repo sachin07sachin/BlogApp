@@ -1,5 +1,5 @@
-import eventlet
-eventlet.monkey_patch()
+from gevent import monkey
+monkey.patch_all()
 import os
 import logging
 import json
@@ -126,7 +126,7 @@ csrf = CSRFProtect(app)
 
 # Initialize SocketIO
 # async_mode='eventlet' is the industry standard for production performance
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # Security: Proxy Fix (Required for Render/Heroku/Nginx)
 if os.environ.get("ENV") == "production":
