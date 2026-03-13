@@ -801,11 +801,11 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                     "url": link_url,
                     "timestamp": timestamp_ms,
                     # 1. Avatar of the person causing the action (or App Logo)
-                    "icon": icon_url or favicon_url,
+                    "icon": icon_url or favicon_url or "",
                     # 2. Rich Image (For New Posts) - Android/Windows only
-                    "image": image_url, 
+                    "image": image_url or "", 
                     # 3. Badge (Small monochrome icon for Android status bar)
-                    "badge": badge_url,
+                    "badge": badge_url or "",
                     # 4. Tag (Prevents stacking: updates existing notif instead of adding new one)
                     "tag": f"{category}_{related_post_id}" if related_post_id else "general"
                 }
@@ -821,9 +821,10 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                             vapid_claims=VAPID_CLAIMS
                         )
                     except WebPushException as ex:
-                        if ex.response and ex.response.status_code == 410:
+                        if ex.response is not None and ex.response.status_code == 410:
                             with safe_commit():
                                 db.session.delete(sub)
+                                logger.info(f"Cleaned up expired push subscription for user {recipient_id}")
                         else:
                             logger.error(f"WebPush Error for user {recipient_id}: {ex}")
 

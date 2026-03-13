@@ -104,8 +104,7 @@
           {% if not current_user.is_authenticated %}
           <li class="nav-item">
             <a class="nav-link px-lg-3 py-3 py-lg-4" 
-               href="{{ url_for('login_get') }}" 
-               onclick="event.preventDefault(); window.location.href = '{{ url_for('login_get') }}?next=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);">
+               href="{{ url_for('login_get') }}">
                Login
             </a>
         </li>

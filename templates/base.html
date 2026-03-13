@@ -334,6 +334,9 @@
           })
           .then((data) => {
             if (data) {
+
+              localStorage.setItem(`sync_like_${postId}`, JSON.stringify({ count: data.likes_count, liked: data.liked }));
+
               // Update the specific button that was clicked
               if (countSpan) countSpan.textContent = data.likes_count;
 

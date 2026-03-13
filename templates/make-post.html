@@ -150,14 +150,14 @@
 
             <div class="input-group has-validation shadow-sm">
               {# {% set input_class = "form-control is-invalid" if
-              form.img_url.errors or form.img_file.errors else "form-control" %}#}
-              {{ form.img_url(class="form-control", id="hybrid_input",
+              form.img_url.errors or form.img_file.errors else "form-control"
+              %}#} {{ form.img_url(class="form-control", id="hybrid_input",
               placeholder="Paste an image URL or upload a file...",
               maxlength="") }}
 
               <button
                 class="btn btn-outline-secondary border-start-0 border-end-0"
-                style="border: 1px solid #ced4da;"
+                style="border: 1px solid #ced4da"
                 type="button"
                 id="btn-clear"
                 title="Clear input"
@@ -174,8 +174,8 @@
                 <i class="bi bi-folder2-open"></i>
               </button>
 
-              {{ form.img_file(class="d-none", id="hidden_file_input") }} {#{% for
-              error in form.img_url.errors %}
+              {{ form.img_file(class="d-none", id="hidden_file_input") }} {#{%
+              for error in form.img_url.errors %}
               <div class="invalid-feedback d-block ms-1 my-1">
                 <strong>URL Error:</strong> {{ error }}
               </div>
@@ -187,7 +187,8 @@
             </div>
 
             <div class="form-text text-muted small mt-2">
-              Supported: png, jpeg, gif, webp. Best fit: <strong>16:9</strong> ratio. Max Size: <strong>8MB</strong>.
+              Supported: png, jpeg, gif, webp. Best fit:
+              <strong>16:9</strong> ratio. Max Size: <strong>8MB</strong>.
             </div>
           </div>
 
@@ -249,6 +250,7 @@
               "
               class="btn btn-outline-secondary rounded-pill px-4 me-2"
             >
+              <i class="bi bi-arrow-left me-1"></i>
               Cancel
             </a>
 
@@ -264,8 +266,8 @@
   </div>
 </main>
 {% endblock %} {% block scripts %}
-<script 
-  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js" 
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js"
   referrerpolicy="origin"
 ></script>
 
@@ -308,7 +310,7 @@
     // --- CUSTOM UPLOAD HANDLER (The Bridge) ---
     images_upload_handler: (blobInfo, progress) => new Promise((resolve, reject) => {
       const file = blobInfo.blob();
-      
+
       // 1. FRONTEND UX VALIDATION
       const MAX_SIZE = 8 * 1024 * 1024; // 8MB
       if (file.size > MAX_SIZE) {
@@ -510,7 +512,7 @@
           // 2. Strict URL Format Check
           // Matches http:// or https:// (case insensitive)
           if (url.match(/^https?:\/\//i)) {
-            showImage(url); 
+            showImage(url);
           } else {
             // FIX: If it has text but isn't a URL, show error immediately
             showError("Invalid URL. Must start with http:// or https://");
@@ -585,6 +587,16 @@
         target.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
+
+    // Look for any form submission (Edit, Create, or the Delete Post modal)
+    const forms = document.querySelectorAll("form");
+
+    forms.forEach(form => {
+      form.addEventListener("submit", function () {
+        // Flag the feed cache as dirty!
+        localStorage.setItem("feed_needs_refresh", "true");
+      });
+    });
   });
 </script>
 {% endblock %}

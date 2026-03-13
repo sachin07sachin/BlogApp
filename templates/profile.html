@@ -567,6 +567,107 @@ posts|length > 0 %}
         });
       }
 
+      // ==========================================
+      // INFINITE SCROLL RESTORATION & CACHE SYSTEM
+      // ==========================================
+      const postsContainer = document.getElementById("posts-container");
+      const sentinelNode = document.getElementById("loading-sentinel");
+
+      if (postsContainer) {
+          const pathKey = window.location.pathname;
+          const cacheKeyHTML = `feed_html_${pathKey}`;
+          const cacheKeyPage = `feed_page_${pathKey}`;
+          const cacheKeyScroll = `feed_scroll_${pathKey}`;
+
+          // --- 1. DETECT NAVIGATION TYPE ---
+          const navEntries = performance.getEntriesByType("navigation");
+          const isBackNavigation = navEntries.length > 0 && navEntries[0].type === "back_forward";
+          
+          // --- 2. CHECK FOR MUTATIONS (Edit/Delete) ---
+          const needsRefresh = localStorage.getItem("feed_needs_refresh");
+
+          const savedHtml = sessionStorage.getItem(cacheKeyHTML);
+          const savedPage = sessionStorage.getItem(cacheKeyPage);
+          const savedScroll = sessionStorage.getItem(cacheKeyScroll);
+
+          // --- 3. RESTORE SNAPSHOT (Happy Path) ---
+          if (isBackNavigation && !needsRefresh && savedHtml && savedScroll) {
+              
+              // Temporarily disable native scroll to prevent screen jitter
+              if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+              // Rebuild the grid
+              postsContainer.innerHTML = savedHtml;
+
+              // Hydrate Stale Likes from Cross-Tab memory
+              document.querySelectorAll('.like-btn').forEach(btn => {
+                  const pId = btn.getAttribute('data-post-id');
+                  const syncData = localStorage.getItem(`sync_like_${pId}`);
+                  
+                  if (syncData) {
+                      const { count, liked } = JSON.parse(syncData);
+                      const icon = btn.querySelector('.heart-icon');
+                      const countSpan = btn.querySelector('.like-count');
+                      
+                      if (icon) {
+                          if (liked) {
+                              icon.classList.remove('bi-heart');
+                              icon.classList.add('bi-heart-fill');
+                          } else {
+                              icon.classList.remove('bi-heart-fill');
+                              icon.classList.add('bi-heart');
+                          }
+                      }
+                      if (countSpan) countSpan.textContent = count;
+                  }
+              });
+
+              // Restore pagination state and format dates
+              if (sentinelNode && savedPage) sentinelNode.setAttribute("data-next-page", savedPage);
+              if (window.localizeTimes) window.localizeTimes(postsContainer);
+
+              // Jump back to exact scroll position
+              setTimeout(() => {
+                  window.scrollTo({ top: parseInt(savedScroll), behavior: 'instant' });
+                  // Re-enable normal browser scrolling
+                  if ('scrollRestoration' in history) history.scrollRestoration = 'auto';
+              }, 50);
+
+              // Wipe HTML cache
+              sessionStorage.removeItem(cacheKeyHTML);
+              sessionStorage.removeItem(cacheKeyPage);
+              sessionStorage.removeItem(cacheKeyScroll);
+              
+          } else {
+              // --- 4. CACHE INVALIDATION (Dirty Path) ---
+              // If it was a standard redirect/refresh, clear memory.
+              sessionStorage.removeItem(cacheKeyHTML);
+              sessionStorage.removeItem(cacheKeyPage);
+              sessionStorage.removeItem(cacheKeyScroll);
+              
+              // If they used the back button but the cache was flagged as dirty (Post Deleted/Edited)
+              if (isBackNavigation && needsRefresh) {
+                  localStorage.removeItem("feed_needs_refresh");
+                  window.location.reload(); // Force a hard reload from the server
+              }
+          }
+
+          // --- 5. TAKE SNAPSHOT BEFORE LEAVING ---
+          postsContainer.addEventListener("click", function (e) {
+              // Ignore middle-clicks or Ctrl/Cmd clicks (they open new tabs, so we don't leave the page)
+              if (e.button === 1 || e.ctrlKey || e.metaKey) return;
+
+              const link = e.target.closest("a");
+
+              // If a real link is clicked
+              if (link && link.href && !link.href.startsWith('javascript:')) {
+                  sessionStorage.setItem(cacheKeyHTML, postsContainer.innerHTML);
+                  if (sentinelNode) sessionStorage.setItem(cacheKeyPage, sentinelNode.getAttribute("data-next-page"));
+                  sessionStorage.setItem(cacheKeyScroll, window.scrollY);
+              }
+          });
+      }
+
       // --- INFINITE SCROLL LOGIC ---
       const sentinel = document.getElementById("loading-sentinel");
       const container = document.getElementById("posts-container");
@@ -590,12 +691,12 @@ posts|length > 0 %}
             // --- THE FIX: SMART URL BUILDER ---
             let currentUrl = new URL(window.location.href);
             let fetchPath = `/user/${username}/load`; // Default for normal Profile view
-            
+
             // If we reached this profile via a search filter (e.g. scope=john), use search API
             if (currentUrl.pathname.startsWith('/search')) {
                 fetchPath = '/search/load';
             }
-            
+
             // Preserve filters and append page number
             currentUrl.searchParams.set('page', nextPage);
             let finalUrl = fetchPath + currentUrl.search;

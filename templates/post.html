@@ -341,10 +341,10 @@
 
   /* Unliked State: Dark Grey/Black Outline */
   .heart-icon.bi-heart {
-    color: #262626; 
+    color: #262626;
     transition: transform 0.2s;
   }
-  
+
   /* Liked State: Instagram Red Fill */
   .heart-icon.bi-heart-fill {
     color: #ed4956;
@@ -360,16 +360,23 @@
 
   /* The One and Only Pop Animation */
   @keyframes heart-pop {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.35); } /* Slightly bigger pop */
-    100% { transform: scale(1); } /* Return to normal (or hover state takes over) */
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.35);
+    } /* Slightly bigger pop */
+    100% {
+      transform: scale(1);
+    } /* Return to normal (or hover state takes over) */
   }
 
   /* Count Text */
   .like-count {
     color: #262626;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    min-width: 15px; 
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-width: 15px;
   }
 </style>
 <header class="masthead" style="background-image: url('{{ post.img_url }}')">
@@ -450,24 +457,36 @@
           <button
             class="like-btn d-flex align-items-center gap-2"
             data-post-id="{{ post.id }}"
-            {% if not current_user.is_authenticated %}
-              disabled
-              style="cursor: default; opacity: 1;" 
-            {% endif %}
+            {%
+            if
+            not
+            current_user.is_authenticated
+            %}
+            disabled
+            style="cursor: default; opacity: 1"
+            {%
+            endif
+            %}
           >
-            <i class="bi {% if post.is_liked_by(current_user) %}bi-heart-fill{% else %}bi-heart{% endif %} fs-3 heart-icon"></i>
-        
-            <span class="fw-bold fs-5 like-count">{{ post.liked_by.count() }}</span>
+            <i
+              class="bi {% if post.is_liked_by(current_user) %}bi-heart-fill{% else %}bi-heart{% endif %} fs-3 heart-icon"
+            ></i>
+
+            <span class="fw-bold fs-5 like-count"
+              >{{ post.liked_by.count() }}</span
+            >
           </button>
-        
+
           {% if not current_user.is_authenticated %}
-            <span class="text-muted ms-2 small">
-              (<a 
-                 href="{{ url_for('login_get', next=request.full_path ~ '#like-section') }}" 
-                 class="text-decoration-none fw-bold" 
-                 style="color: #0095f6;"
-               >Log in</a> to like)
-            </span>
+          <span class="text-muted ms-2 small">
+            (<a
+              href="{{ url_for('login_get', next=request.full_path ~ '#like-section') }}"
+              class="text-decoration-none fw-bold"
+              style="color: #0095f6"
+              >Log in</a
+            >
+            to like)
+          </span>
           {% endif %}
         </div>
 
@@ -527,7 +546,7 @@
               data-bs-dismiss="alert"
             ></button>
           </div>
-         {# {% endif %}#} {% endfor %} {% endif %} {% endwith %}
+          {# {% endif %}#} {% endfor %} {% endif %} {% endwith %}
 
           <form
             method="POST"
@@ -738,8 +757,8 @@
   </div>
 </div>
 {% endblock %} {% block scripts %}
-<script 
-  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js" 
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js"
   referrerpolicy="origin"
 ></script>
 
@@ -992,7 +1011,7 @@
               .then((response) => {
                 // 1. If apiFetch handled a redirect/error, it returns null. Stop here.
                 if (!response) return null;
-                
+
                 // 2. If valid, get the HTML text
                 return response.text();
               })
@@ -1047,7 +1066,15 @@
       }
     });
 
-  
+    // Look for any form submission (Edit, Create, or the Delete Post modal)
+    const forms = document.querySelectorAll("form");
+
+    forms.forEach((form) => {
+      form.addEventListener("submit", function () {
+        // Flag the feed cache as dirty!
+        localStorage.setItem("feed_needs_refresh", "true");
+      });
+    });
   });
 </script>
 {% endblock %}
