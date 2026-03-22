@@ -377,6 +377,20 @@
               }
             }
           });
+
+          // --- GLOBAL: Listen for Real-Time Notification Bell ---
+          window.socket.on("unread_notifs_update", function (data) {
+            const count = data.count;
+            const badge = document.getElementById("nav-notif-badge");
+
+            if (badge) {
+              if (count > 0) {
+                badge.classList.remove("d-none"); // Just show the red dot
+              } else {
+                badge.classList.add("d-none");
+              }
+            }
+          });
         });
       }
     </script>

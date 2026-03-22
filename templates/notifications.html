@@ -1,0 +1,173 @@
+{% extends "base.html" %} 
+
+{% block header %}
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+  <div class="container position-relative px-4 px-lg-5">
+    <div class="row gx-4 gx-lg-5 justify-content-center">
+      <div class="col-md-10 col-lg-8 col-xl-7">
+        <div class="site-heading">
+          <h1>Notifications</h1>
+          <span class="subheading">Stay up to date with your community.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="container px-4 px-lg-5 mb-4">
+  <div class="row justify-content-center">
+    <div class="col-md-9 col-lg-8">
+      
+      {% with messages = get_flashed_messages(with_categories=true) %} 
+        {% if messages %} 
+          {% for category, message in messages %} 
+            <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %} 
+        {% endif %} 
+      {% endwith %}
+
+      <div class="d-flex justify-content-between align-items-end border-bottom pb-3 mb-4">
+        <h3 class="fw-bold mb-0"><i class="bi bi-bell-fill me-2 text-primary"></i>Activity</h3>
+        
+        {% if notifications %}
+        <button id="mark-read-btn" class="btn btn-sm btn-outline-secondary rounded-pill fw-bold px-3">
+          <i class="bi bi-check2-all me-1"></i>Mark all as read
+        </button>
+        {% endif %}
+      </div>
+
+      {% if notifications %}
+      <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4" id="notifications-container">
+        
+        {% include "_notification_list.html" %}
+        
+      </div>
+
+      {% if has_next %}
+      <div id="loading-sentinel" data-next-page="{{ next_page }}" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+      {% endif %}
+      
+      <div id="end-of-content" class="text-center py-4 text-muted" style="display: none">
+        <p>You are all caught up!</p>
+      </div>
+
+      {% else %}
+      <div class="text-center py-5 my-5">
+        <i class="bi bi-bell-slash display-1 text-muted opacity-25 mb-3 d-block"></i>
+        <h4 class="text-muted fw-bold">Nothing to see here</h4>
+        <p class="text-muted">You don't have any notifications right now.</p>
+        <a href="{{ url_for('get_all_posts') }}" class="btn btn-primary rounded-pill mt-2 px-4 shadow-sm">Go to Feed</a>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    
+    // --- MARK ALL AS READ LOGIC ---
+    const markReadBtn = document.getElementById("mark-read-btn");
+    
+    if (markReadBtn) {
+        markReadBtn.addEventListener("click", function() {
+            // UI Feedback: Spin the button
+            const originalText = this.innerHTML;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            this.disabled = true;
+
+            // Fire to the API (Uses your universal apiFetch from base.html!)
+            apiFetch('/api/notifications/read-all', { method: 'POST' })
+                .then(response => {
+                    if (!response) return null; // Session expired
+                    return response.json();
+                })
+                .then(data => {
+                    if (data && data.success) {
+                        // 1. Change all blue backgrounds to white
+                        document.querySelectorAll('.bg-primary.bg-opacity-10').forEach(row => {
+                            row.classList.remove('bg-primary', 'bg-opacity-10');
+                            row.classList.add('bg-white');
+                        });
+                        
+                        // 2. Remove all blue dots
+                        document.querySelectorAll('.unread-dot').forEach(dot => dot.remove());
+
+                        // 3. Hide the navbar bell badge
+                        const bellBadge = document.getElementById("nav-notif-badge");
+                        if (bellBadge) bellBadge.classList.add("d-none");
+
+                        // 4. Update the button text
+                        markReadBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1 text-success"></i>All caught up';
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to mark read", err);
+                    this.innerHTML = originalText;
+                    this.disabled = false;
+                });
+        });
+    }
+
+    // --- INFINITE SCROLL LOGIC ---
+    const sentinel = document.getElementById("loading-sentinel");
+    const container = document.getElementById("notifications-container");
+    const endMessage = document.getElementById("end-of-content");
+    let isLoading = false;
+
+    if (sentinel) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isLoading) {
+          isLoading = true;
+          const nextPage = sentinel.getAttribute("data-next-page");
+
+          if (!nextPage || nextPage === "None") {
+             sentinel.remove();
+             if (endMessage) endMessage.style.display = "block";
+             return;
+          }
+
+          apiFetch(`/notifications/load?page=${nextPage}`)
+            .then(response => {
+                if (!response) return null;
+                return response.text();
+            })
+            .then(html => {
+              if (html && html.trim().length > 0) {
+                container.insertAdjacentHTML('beforeend', html);
+                
+                // Uses your exact date logic from base.html
+                if (window.localizeTimes) window.localizeTimes(container);
+                
+                sentinel.setAttribute("data-next-page", parseInt(nextPage) + 1);
+                isLoading = false;
+              } else {
+                sentinel.remove();
+                if (endMessage) endMessage.style.display = "block";
+              }
+            })
+            .catch(err => {
+              console.error("Error loading notifications:", err);
+              sentinel.style.display = "none";
+              isLoading = false;
+            });
+        }
+      }, { rootMargin: "200px" });
+
+      observer.observe(sentinel);
+    }
+});
+</script>
+{% endblock %}

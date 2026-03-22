@@ -49,9 +49,12 @@
         font-weight: 600;
       }
 
+      /* NEW: Centered content for the action layout */
       .content {
         padding: 40px;
+        text-align: center; 
       }
+      
       .footer {
         background-color: #f9f9f9;
         padding: 30px 20px;
@@ -61,54 +64,7 @@
         border-top: 1px solid #eaeaec;
       }
 
-      /* --- LIST STYLES --- */
-      .section-title {
-        font-size: 12px;
-        font-weight: bold;
-        text-transform: uppercase;
-        color: #999;
-        margin-bottom: 10px;
-        letter-spacing: 1px;
-        margin-top: 20px;
-      }
-
-      /* The List Container */
-      .list-group {
-        border: 1px solid #eee;
-        border-radius: 8px;
-        overflow: hidden;
-        margin-bottom: 20px;
-        background-color: #fff;
-      }
-
-      /* Individual Items */
-      .list-item {
-        padding: 15px 20px;
-        border-bottom: 1px solid #eee;
-        display: block;
-        text-decoration: none;
-        color: #333;
-        transition: background 0.2s;
-      }
-      .list-item:last-child {
-        border-bottom: none;
-      }
-      .list-item:hover {
-        background-color: #f8f9fa;
-      }
-
-      .icon {
-        margin-right: 12px;
-        font-size: 18px;
-        vertical-align: middle;
-        display: inline-block;
-      }
-      .item-text {
-        vertical-align: middle;
-        font-size: 15px;
-      }
-
-      /* Button - Brand Blue */
+      /* --- NEW BUTTON STYLES --- */
       .btn {
         display: inline-block;
         background-color: #0d6efd;
@@ -118,10 +74,25 @@
         border-radius: 50px;
         font-weight: bold;
         font-size: 15px;
-        margin-top: 20px;
+        margin: 10px 5px;
+        min-width: 200px;
       }
       .btn:hover {
         background-color: #0b5ed7;
+      }
+      
+      .btn-outline {
+        background-color: transparent;
+        color: #0d6efd !important;
+        border: 2px solid #0d6efd;
+      }
+      .btn-outline:hover {
+        background-color: #f0f8ff;
+      }
+
+      .bell-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
       }
 
       /* --- DARK MODE OVERRIDES --- */
@@ -146,20 +117,8 @@
           border-top: 1px solid #333 !important;
           color: #888 !important;
         }
-
-        .list-group {
+        .btn-outline:hover {
           background-color: #333 !important;
-          border: 1px solid #444 !important;
-        }
-        .list-item {
-          border-bottom: 1px solid #444 !important;
-          color: #e0e0e0 !important;
-        }
-        .list-item:hover {
-          background-color: #3a3a3a !important;
-        }
-        .section-title {
-          color: #888 !important;
         }
       }
 
@@ -174,77 +133,36 @@
         .btn {
           display: block;
           width: 100%;
-          text-align: center;
           box-sizing: border-box;
+          margin: 10px 0;
         }
       }
     </style>
   </head>
   <body>
     <div class="wrapper">
-      <table
-        role="presentation"
-        border="0"
-        cellpadding="0"
-        cellspacing="0"
-        width="100%"
-      >
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
         <tr>
           <td align="center" style="padding-top: 40px">
             <div class="container">
               <div class="header">
-                <h1>Unread Activity</h1>
+                <h1>Missed Activity</h1>
               </div>
 
               <div class="content">
-                <p>Hi <strong>{{ user.name }}</strong>,</p>
-                <p>
-                  You missed some activity on Blog App while you were away. Here
-                  is what happened in the last 24 hours:
+                <div class="bell-icon">🔔</div>
+                <p style="font-size: 18px;">Hi <strong>{{ user.name }}</strong>,</p>
+                <p style="color: #666; margin-bottom: 30px;">
+                  You have unread activity waiting for you on Blog App. Catch up on what you missed while you were away!
                 </p>
 
-                {% if msg_count > 0 %}
-                <div class="section-title">Direct Messages</div>
-                <div class="list-group">
-                  <a href="{{ inbox_url }}" class="list-item">
-                    <span class="icon">💬</span>
-                    <span class="item-text"
-                      >You have
-                      <strong
-                        >{{ msg_count }} new message{% if msg_count > 1 %}s{%
-                        endif %}</strong
-                      ></span
-                    >
-                  </a>
-                </div>
-                {% endif %} {% if activity_list %}
-                <div class="section-title">Notifications</div>
-                <div class="list-group">
-                  {% for notif in activity_list %}
-                  <a href="{{ notif.link_url }}" class="list-item">
-                    {% if notif.category == 'comment' %}
-                    <span class="icon">📝</span>
-                    {% elif notif.category == 'post' %}
-                    <span class="icon">📰</span>
-                    {% elif notif.category == 'edit' %}
-                    <span class="icon">✏️</span>
-                    {% elif notif.category == 'like' %}
-                    <span class="icon" style="color: #e63946">❤️</span>
-                    {% else %}
-                    <span class="icon">🔔</span>
-                    {% endif %}
-                    <span class="item-text" style="word-break: break-word;"
-                      >{{ notif.message | normalize_whitespace | truncate(40)
-                      }}</span
-                    >
-                  </a>
-                  {% endfor %}
-                </div>
+                {% if has_notifs %}
+                  <a href="{{ notifications_url }}" class="btn">View Notifications</a>
                 {% endif %}
-
-                <div style="text-align: center">
-                  <a href="{{ home_url }}" class="btn">View All Activity</a>
-                </div>
+                
+                {% if has_msgs %}
+                  <a href="{{ inbox_url }}" class="btn {% if has_notifs %}btn-outline{% endif %}">View Inbox</a>
+                {% endif %}
               </div>
 
               <div class="footer">
@@ -255,35 +173,9 @@
                 </p>
 
                 <div style="margin-top: 10px">
-                  <a
-                    href="{{ settings_url }}"
-                    style="
-                      color: #989ea4;
-                      margin: 0 5px;
-                      text-decoration: underline;
-                    "
-                    >Manage Preferences</a
-                  >
-                  •
-                  <a
-                    href="{{ privacy_url }}"
-                    style="
-                      color: #989ea4;
-                      margin: 0 5px;
-                      text-decoration: underline;
-                    "
-                    >Privacy Policy</a
-                  >
-                  •
-                  <a
-                    href="{{ support_url }}"
-                    style="
-                      color: #989ea4;
-                      margin: 0 5px;
-                      text-decoration: underline;
-                    "
-                    >Support</a
-                  >
+                  <a href="{{ settings_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Manage Preferences</a> •
+                  <a href="{{ privacy_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Privacy Policy</a> •
+                  <a href="{{ support_url }}" style="color: #989ea4; margin: 0 5px; text-decoration: underline;">Support</a>
                 </div>
 
                 <p style="margin-top: 20px">

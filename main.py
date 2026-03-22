@@ -299,6 +299,10 @@ class User(UserMixin, db.Model):
     def new_messages(self):
         return Message.query.filter_by(recipient=self, is_read=False).count()
     
+    # --- NEW: Helper method to count unread notifications ---
+    def new_notifications(self):
+        return Notification.query.filter_by(recipient_id=self.id, is_read=False).count()
+    
     def is_blocking(self, user):
         """Returns True if THIS user has blocked the target user."""
         return self.blocked.filter(user_blocks.c.blocked_id == user.id).count() > 0
@@ -399,6 +403,9 @@ class Notification(db.Model):
     __tablename__ = "notifications"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     recipient_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    # --- NEW: Track who caused the notification (Allows Clickable Avatars/Names) ---
+    sender_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -414,7 +421,8 @@ class Notification(db.Model):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    recipient = relationship("User", backref="notifications")
+    recipient = relationship("User", foreign_keys=[recipient_id], backref="notifications")
+    sender = relationship("User", foreign_keys=[sender_id]) # NEW: Allows calling notif.sender.username
 
 class DeletedAccountLog(db.Model):
     __tablename__ = "deleted_accounts"
@@ -756,7 +764,7 @@ def anonymize_user_data(user):
 # 5. NOTIFICATION SYSTEM
 # -------------------------------------------------------------------
 
-def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None, related_comment_id=None, icon_url=None, image_url=None, badge_url=None, favicon_url=None):
+def send_notification_async(recipient_id, title, body, link_url, category, related_post_id=None, related_comment_id=None, icon_url=None, image_url=None, badge_url=None, favicon_url=None, sender_id=None):
     """
     Background Task:
     1. Saves notification to DB (Persistence for Daily Digest).
@@ -778,6 +786,7 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                 with safe_commit():
                     new_notif = Notification(
                         recipient_id=recipient_id,
+                        sender_id=sender_id,
                         title=title,
                         message=body,
                         link_url=link_url,
@@ -786,6 +795,11 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                         related_comment_id=related_comment_id
                     )
                     db.session.add(new_notif)
+
+                # Get the fresh unread count and emit it to the user's personal room
+                recipient_user = db.session.get(User, recipient_id)
+                if recipient_user:
+                    socketio.emit('unread_notifs_update', {'count': recipient_user.new_notifications()}, room=f"user_{recipient_id}")
 
             # B. SEND RICH PUSH (Immediate)
             subscriptions = db.session.scalars(
@@ -933,27 +947,13 @@ def send_digest():
             logger.info(f"Processing digest for {user.email}")
             
             try:
-                # Get Chat Stats
-                unread_msgs = user.new_messages()
-                
-                # Get Notification Activity
-                unread_activity = db.session.scalars(
-                    db.select(Notification)
-                    .where(
-                        Notification.recipient_id == user.id, 
-                        Notification.is_read == False, 
-                        Notification.timestamp < cutoff
-                    )
-                    .order_by(Notification.timestamp.desc())
-                ).all()
-                
-                # Double check there is actually something to send
-                if unread_msgs == 0 and len(unread_activity) == 0:
-                    continue
+                has_msgs = user in users_with_messages
+                has_notifs = user in users_with_notifs
 
                 # Render & Send
                 # --- FAIL-SAFE: Generate all URLs here via Flask Context ---
                 inbox_url = url_for('inbox', _external=True)
+                notifications_url = url_for('notifications', _external=True)
                 home_url = url_for('get_all_posts', _external=True)
                 settings_url = url_for('settings', _external=True)
                 privacy_url = url_for('legal', page_name='privacy', _external=True)
@@ -962,13 +962,14 @@ def send_digest():
                 html_body = render_template(
                     "email/unread_digest.html", 
                     user=user,
-                    msg_count=unread_msgs,
-                    activity_list=unread_activity,
+                    has_msgs=has_msgs,
+                    has_notifs=has_notifs,
                     inbox_url=inbox_url,
+                    notifications_url=notifications_url,
                     home_url=home_url,
                     settings_url=settings_url,
-                    privacy_url=privacy_url, # New: Passed to template
-                    support_url=support_url  # New: Passed to template
+                    privacy_url=privacy_url,
+                    support_url=support_url
                 )
                 
                 send_email(
@@ -1813,7 +1814,8 @@ def like_post(post_id):
                 related_post_id=post.id,
                 icon_url=get_gravatar_url(current_user.email),
                 badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                sender_id=current_user.id
             )
         except Exception as e:
             logger.error(f"Like notification failed: {e}")
@@ -1923,7 +1925,8 @@ def show_post(post_id):
                             related_comment_id=new_comment.id,
                             icon_url=get_gravatar_url(current_user.email),
                             badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                            sender_id=current_user.id
                         )
                         
                         # Check if the person we just notified is the Post Author
@@ -1945,7 +1948,8 @@ def show_post(post_id):
                     related_comment_id=new_comment.id,
                     icon_url=get_gravatar_url(current_user.email),
                     badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                    favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                    favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                    sender_id=current_user.id
                 )
 
         except Exception as e:
@@ -2169,7 +2173,8 @@ def add_new_post():
                             icon_url=get_gravatar_url(current_user.email),
                             image_url=post.img_url,
                             badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                            sender_id=current_user.id
                         )
         except Exception as e:
             # Log the error internally but allow the request to succeed
@@ -2300,7 +2305,8 @@ def edit_post(post_id):
                             icon_url=get_gravatar_url(current_user.email),
                             image_url=post.img_url,
                             badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                            sender_id=current_user.id
                         )
         except Exception as e:
             logger.error(f"Notification Error for post {post.id}: {e}")
@@ -2533,6 +2539,7 @@ def inject_global_vars():
     vars = {
         'current_year': datetime.now(timezone.utc).year,
         'unread_count': 0,
+        'unread_notifs': 0,
         'datetime': datetime,
         'timezone': timezone,
     }
@@ -2540,6 +2547,7 @@ def inject_global_vars():
     # Add user-specific data if logged in
     if current_user.is_authenticated:
         vars['unread_count'] = current_user.new_messages()
+        vars['unread_notifs'] = current_user.new_notifications()
     
     return vars
 
@@ -3001,7 +3009,8 @@ def handle_socket_message(data):
                 "chat",
                 icon_url=get_gravatar_url(current_user.email),
                 badge_url=badge_url,
-                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True)
+                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                sender_id=current_user.id
             )
         except Exception as e:
             logger.error(f"Socket message failed: {e}")
@@ -3034,6 +3043,61 @@ def handle_mark_read(data):
         socketio.emit('unread_count_update', {'count': new_count}, room=f"user_{current_user.id}")
     except Exception as e:
         logger.error(f"Mark read failed: {e}")
+
+# =======================================================================
+# NOTIFICATION HUB ROUTES
+# =======================================================================
+
+@app.route('/notifications')
+@login_required
+def notifications():
+    page = request.args.get('page', 1, type=int)
+    per_page = 15
+    
+    stmt = db.select(Notification).where(
+        Notification.recipient_id == current_user.id
+    ).order_by(Notification.timestamp.desc())
+    
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    return render_template(
+        'notifications.html', 
+        notifications=pagination.items,
+        has_next=pagination.has_next,
+        next_page=pagination.next_num
+    )
+
+@app.route('/notifications/load')
+@login_required
+def load_notifications():
+    page = request.args.get('page', 1, type=int)
+    per_page = 15
+    
+    stmt = db.select(Notification).where(
+        Notification.recipient_id == current_user.id
+    ).order_by(Notification.timestamp.desc())
+    
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    
+    return render_template('_notification_list.html', notifications=pagination.items)
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+@login_required
+def read_all_notifications():
+    try:
+        with safe_commit():
+            db.session.execute(
+                db.update(Notification)
+                .where(
+                    Notification.recipient_id == current_user.id, 
+                    Notification.is_read == False
+                )
+                .values(is_read=True)
+            )
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error marking notifications read: {e}")
+        return jsonify({"error": "Server error"}), 500
 
 # -------------------------------------------------------------------
 # ENTRY POINT

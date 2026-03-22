@@ -134,7 +134,21 @@
 
             </a>
           </li>
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">Log Out</a></li>
+
+          <li class="nav-item">
+            <a class="nav-link px-lg-3 py-3 py-lg-4 d-flex align-items-center" href="{{ url_for('notifications') }}" title="Notifications">
+                <span class="position-relative d-inline-block" style="line-height: 1;">
+                    <i class="bi bi-bell-fill" style="font-size: 1.1rem;"></i>
+                    <span id="nav-notif-badge" 
+                          class="position-absolute badge border border-light rounded-circle bg-danger {% if unread_notifs == 0 %}d-none{% endif %}" 
+                          style="padding: 4px; top: -4px; right: -6px;">
+                          <span class="visually-hidden">unread notifications</span>
+                    </span>
+                </span>
+            </a>
+          </li>
+
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">LogOut</a></li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
           {% endif %}
         </ul>

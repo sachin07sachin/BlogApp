@@ -1,0 +1,86 @@
+{% for notif in notifications %}
+<div
+  class="d-flex align-items-center p-3 border-bottom {% if not notif.is_read %}bg-primary bg-opacity-10{% else %}bg-white{% endif %}"
+  id="notif-{{ notif.id }}"
+>
+  <div class="flex-shrink-0 me-3">
+    {% if notif.sender %}
+    <a href="{{ url_for('user_profile', username=notif.sender.username) }}">
+      <img
+        src="{{ notif.sender.email | gravatar }}"
+        class="rounded-circle shadow-sm"
+        width="48"
+        height="48"
+        alt="Avatar"
+      />
+    </a>
+    {% else %}
+    <img
+      src="{{ 'deleted@example.com' | gravatar }}"
+      class="rounded-circle shadow-sm"
+      width="48"
+      height="48"
+      alt="Deleted User"
+    />
+    {% endif %}
+  </div>
+
+  <div class="flex-grow-1">
+    <div class="mb-1" style="font-size: 0.95rem">
+      {% if notif.sender %}
+      <a
+        href="{{ url_for('user_profile', username=notif.sender.username) }}"
+        class="fw-bold text-dark text-decoration-none"
+      >
+        {{ notif.sender.name }}
+      </a>
+      {% else %}
+      <span class="fw-bold text-dark">Deleted User</span>
+      {% endif %}
+
+      <span class="text-muted mx-1">
+        {% if notif.category == 'like' %} liked your post {% elif notif.category
+        == 'comment' %} commented on {% elif notif.category == 'post' %}
+        published a new post: {% elif notif.category == 'edit' %} updated their
+        post: {% else %} sent you a notification: {% endif %}
+      </span>
+
+      <a
+        href="{{ notif.link_url }}"
+        class="text-dark fw-medium text-decoration-none"
+        style="
+          text-decoration: underline !important;
+          text-underline-offset: 3px;
+          text-decoration-color: #dee2e6 !important;
+        "
+      >
+        "{{ notif.title }}"
+      </a>
+    </div>
+
+    <div class="text-muted small d-flex align-items-center">
+      {% if notif.category == 'like' %}
+      <i class="bi bi-heart-fill text-danger me-2"></i>
+      {% elif notif.category == 'comment' %}
+      <i class="bi bi-chat-fill text-primary me-2"></i>
+      {% elif notif.category == 'post' %}
+      <i class="bi bi-file-earmark-text-fill text-success me-2"></i>
+      {% elif notif.category == 'edit' %}
+      <i class="bi bi-pencil-fill text-secondary me-2"></i>
+      {% endif %}
+      <span
+        class="smart-date"
+        data-utc="{{ notif.timestamp.isoformat() }}"
+      ></span>
+    </div>
+  </div>
+
+  {% if not notif.is_read %}
+  <div class="flex-shrink-0 ms-2 unread-dot">
+    <span class="badge bg-primary rounded-circle p-1"
+      ><span class="visually-hidden">Unread</span></span
+    >
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
