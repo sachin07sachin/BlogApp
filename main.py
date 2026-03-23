@@ -49,7 +49,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
 from calendar import month_name
@@ -648,10 +648,15 @@ def save_picture(form_picture):
     - Animation Support: Handles GIFs correctly (keeps them moving).
     """
     try:
+
+        # Determine folder based on environment (defaults to development)
+        env_name = os.environ.get("ENV", "development")
+        target_folder = f"my_blog_posts_{env_name}"
+
         # 1. Upload to Cloudinary
         upload_result = cloudinary.uploader.upload(
             form_picture,
-            folder="my_blog_posts", # Organizes uploads into this folder
+            folder=target_folder, # Organizes uploads into this folder
             
             # 2. Apply Transformations on the Fly
             transformation=[
@@ -711,8 +716,10 @@ def delete_picture(img_url):
         filename = filename_with_ext.rsplit('.', 1)[0]
         
         # Reconstruct the Public ID (Folder + Filename)
-        # We hardcoded "my_blog_posts" in save_picture, so we add it back here.
-        public_id = f"my_blog_posts/{filename}"
+        filename = unquote(filename)
+        
+        env_name = os.environ.get("ENV", "development")
+        public_id = f"my_blog_posts_{env_name}/{filename}"
         
         # 4. Send Destroy Command
         cloudinary.uploader.destroy(public_id)
@@ -1004,20 +1011,25 @@ def cleanup_orphaned_images():
         all_posts = db.session.execute(db.select(BlogPost.body, BlogPost.img_url)).all()
         all_content_blob = " ".join([p.body for p in all_posts if p.body]) + " " + " ".join([p.img_url for p in all_posts if p.img_url])
 
+        decoded_content_blob = unquote(all_content_blob)
+
+        env_name = os.environ.get("ENV", "development")
+        target_prefix = f"my_blog_posts_{env_name}/"
+
         next_cursor = None
         deleted_count = 0
         
         while True:
             # 2. Fetch all images from Cloudinary (500 at a time)
             resources = cloudinary.api.resources(
-                type="upload", prefix="my_blog_posts/", max_results=500, next_cursor=next_cursor
+                type="upload", prefix=target_prefix, max_results=500, next_cursor=next_cursor
             )
             
             for resource in resources.get("resources", []):
                 public_id = resource['public_id']
                 
                 # 3. If public_id is missing from DB, and is older than 7 days (draft buffer)
-                if public_id not in all_content_blob:
+                if public_id not in decoded_content_blob:
                     created_at = datetime.strptime(resource['created_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                     if datetime.now(timezone.utc) - created_at > timedelta(days=7):
                         cloudinary.uploader.destroy(resource['public_id'])
@@ -2081,7 +2093,7 @@ def add_new_post():
         final_img_url = None
 
         # A. File Upload (Priority)
-        if form.img_file.data:
+        if form.img_file.data and form.img_file.data.filename:
             file = form.img_file.data
             
             # 1. SECURITY: Validate Magic Bytes
@@ -2222,7 +2234,7 @@ def edit_post(post_id):
         new_cloud_url = None
         is_new_upload = False
 
-        if form.img_file.data:
+        if form.img_file.data and form.img_file.data.filename:
             file = form.img_file.data
             
             # Security Check
