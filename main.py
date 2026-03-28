@@ -25,7 +25,7 @@ from bleach.css_sanitizer import CSSSanitizer
 from dotenv import load_dotenv
 from flask import (
     Flask, abort, render_template, redirect,
-    url_for, flash, jsonify, request, session, send_from_directory, current_app
+    url_for, flash, jsonify, request, session, send_from_directory, current_app, make_response
 )
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
@@ -381,6 +381,7 @@ class Message(db.Model):
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     
+    is_emailed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     sender = relationship("User", foreign_keys=[sender_id], back_populates="messages_sent")
     recipient = relationship("User", foreign_keys=[recipient_id], back_populates="messages_received")
 
@@ -421,6 +422,7 @@ class Notification(db.Model):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    is_emailed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     recipient = relationship("User", foreign_keys=[recipient_id], backref="notifications")
     sender = relationship("User", foreign_keys=[sender_id]) # NEW: Allows calling notif.sender.username
 
@@ -808,6 +810,20 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                 if recipient_user:
                     socketio.emit('unread_notifs_update', {'count': recipient_user.new_notifications()}, room=f"user_{recipient_id}")
 
+                sender_user = db.session.get(User, sender_id) if sender_id else None
+                
+                socketio.emit('new_notification_item', {
+                    'id': new_notif.id,
+                    'title': title,
+                    'message': body,
+                    'link_url': link_url,
+                    'category': category,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'icon_url': icon_url, 
+                    'sender_username': sender_user.username if sender_user else None,
+                    'sender_name': sender_user.name if sender_user else None
+                }, room=f"user_{recipient_id}")
+
             # B. SEND RICH PUSH (Immediate)
             subscriptions = db.session.scalars(
                 db.select(PushSubscription).where(PushSubscription.user_id == recipient_id)
@@ -848,34 +864,6 @@ def send_notification_async(recipient_id, title, body, link_url, category, relat
                                 logger.info(f"Cleaned up expired push subscription for user {recipient_id}")
                         else:
                             logger.error(f"WebPush Error for user {recipient_id}: {ex}")
-
-            # # B. SEND PUSH (Immediate)
-            # subscriptions = db.session.scalars(
-            #     db.select(PushSubscription).where(PushSubscription.user_id == recipient_id)
-            # ).all()
-
-            # if subscriptions:
-            #     payload = json.dumps({
-            #         "title": title,
-            #         "body": body,
-            #         "url": link_url
-            #     })
-
-            #     for sub in subscriptions:
-            #         try:
-            #             webpush(
-            #                 subscription_info=json.loads(sub.subscription_json),
-            #                 data=payload,
-            #                 vapid_private_key=VAPID_PRIVATE_KEY,
-            #                 vapid_claims=VAPID_CLAIMS
-            #             )
-            #         except WebPushException as ex:
-            #             # Clean up expired subscriptions (HTTP 410 Gone)
-            #             if ex.response and ex.response.status_code == 410:
-            #                 with safe_commit():
-            #                     db.session.delete(sub)
-            #             else:
-            #                 logger.error(f"WebPush Error for user {recipient_id}: {ex}")
 
         except Exception as e:
             logger.exception(f"Notification Failed for user {recipient_id}: {e}")
@@ -922,7 +910,8 @@ def send_digest():
     users_with_messages = db.session.scalars(
         db.select(User).join(Message, Message.recipient_id == User.id)
         .where(
-            Message.is_read == False, 
+            Message.is_read == False,
+            Message.is_emailed == False, 
             Message.timestamp < cutoff, 
             User.notify_on_message == True
         )
@@ -932,7 +921,8 @@ def send_digest():
     users_with_notifs = db.session.scalars(
         db.select(User).join(Notification, Notification.recipient_id == User.id)
         .where(
-            Notification.is_read == False, 
+            Notification.is_read == False,
+            Notification.is_emailed == False, 
             Notification.timestamp < cutoff
         )
     ).unique().all()
@@ -984,6 +974,31 @@ def send_digest():
                     subject=f"You missed some activity on Blog App",
                     html_body=html_body
                 )
+
+                # Once the email succeeds, mark these specific items as emailed.
+                with safe_commit():
+                    if has_msgs:
+                        db.session.execute(
+                            db.update(Message)
+                            .where(
+                                Message.recipient_id == user.id, 
+                                Message.is_read == False, 
+                                Message.is_emailed == False, 
+                                Message.timestamp < cutoff
+                            )
+                            .values(is_emailed=True)
+                        )
+                    if has_notifs:
+                        db.session.execute(
+                            db.update(Notification)
+                            .where(
+                                Notification.recipient_id == user.id, 
+                                Notification.is_read == False, 
+                                Notification.is_emailed == False, 
+                                Notification.timestamp < cutoff
+                            )
+                            .values(is_emailed=True)
+                        )
 
                 time.sleep(0.2)
             except Exception as e:
@@ -3063,35 +3078,62 @@ def handle_mark_read(data):
 @app.route('/notifications')
 @login_required
 def notifications():
-    page = request.args.get('page', 1, type=int)
     per_page = 15
     
+    # Fetch per_page + 1 to easily check if there's a "next page"
     stmt = db.select(Notification).where(
         Notification.recipient_id == current_user.id
-    ).order_by(Notification.timestamp.desc())
+    ).order_by(Notification.timestamp.desc()).limit(per_page + 1)
     
-    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    results = db.session.scalars(stmt).all()
     
-    return render_template(
+    has_next = len(results) > per_page
+    notifications_to_show = results[:per_page] # Slice off that extra item
+    
+    # Get the exact timestamp of the last item on this page
+    next_ts = notifications_to_show[-1].timestamp.isoformat() if has_next and notifications_to_show else None
+    
+    response = make_response(render_template(
         'notifications.html', 
-        notifications=pagination.items,
-        has_next=pagination.has_next,
-        next_page=pagination.next_num
-    )
+        notifications=notifications_to_show,
+        has_next=has_next,
+        next_ts=next_ts
+    ))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
+    return response
 
 @app.route('/notifications/load')
 @login_required
 def load_notifications():
-    page = request.args.get('page', 1, type=int)
     per_page = 15
+    before_ts_str = request.args.get('before', type=str)
     
     stmt = db.select(Notification).where(
         Notification.recipient_id == current_user.id
-    ).order_by(Notification.timestamp.desc())
+    )
     
-    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    # THE CURSOR: Only fetch items strictly older than the timestamp provided
+    if before_ts_str:
+        try:
+            # Handle the 'Z' (UTC) from JS ISO strings
+            dt = datetime.fromisoformat(before_ts_str.replace('Z', '+00:00'))
+            stmt = stmt.where(Notification.timestamp < dt)
+        except ValueError:
+            pass # Failsafe if string is malformed
+            
+    stmt = stmt.order_by(Notification.timestamp.desc()).limit(per_page + 1)
+    results = db.session.scalars(stmt).all()
     
-    return render_template('_notification_list.html', notifications=pagination.items)
+    has_next = len(results) > per_page
+    notifications_to_show = results[:per_page]
+    
+    next_ts = notifications_to_show[-1].timestamp.isoformat() if has_next and notifications_to_show else None
+    
+    # We pass next_ts to the partial so JS can grab it easily
+    return render_template('_notification_list.html', notifications=notifications_to_show, next_ts=next_ts)
 
 @app.route('/api/notifications/read-all', methods=['POST'])
 @login_required
