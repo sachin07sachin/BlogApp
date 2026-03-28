@@ -1,86 +1,62 @@
 {% for notif in notifications %}
-<div
-  class="d-flex align-items-center p-3 border-bottom {% if not notif.is_read %}bg-primary bg-opacity-10{% else %}bg-white{% endif %}"
-  id="notif-{{ notif.id }}"
->
-  <div class="flex-shrink-0 me-3">
-    {% if notif.sender %}
-    <a href="{{ url_for('user_profile', username=notif.sender.username) }}">
-      <img
-        src="{{ notif.sender.email | gravatar }}"
-        class="rounded-circle shadow-sm"
-        width="48"
-        height="48"
-        alt="Avatar"
-      />
-    </a>
+<div class="d-flex align-items-start p-3 border-bottom transition-hover {% if not notif.is_read %}bg-primary bg-opacity-10{% else %}bg-white{% endif %}" id="notif-{{ notif.id }}">
+
+  <div class="flex-shrink-0 me-3 position-relative mt-1">
+    {# Check if sender exists AND is not a deleted ghost #}
+    {% if notif.sender and not notif.sender.username.startswith('ghost_') %}
+      <a href="{{ url_for('user_profile', username=notif.sender.username) }}" title="Visit {{ notif.sender.name }}'s profile">
+        <img src="{{ notif.sender.email | gravatar(size=48) }}" class="rounded-circle shadow-sm avatar-hover" width="48" height="48" alt="{{ notif.sender.name }}" />
+      </a>
+    {% elif notif.sender %}
+      <img src="{{ notif.sender.email | gravatar(size=48) }}" class="rounded-circle shadow-sm opacity-75" width="48" height="48" alt="Deleted User" title="Deleted User" />
     {% else %}
-    <img
-      src="{{ 'deleted@example.com' | gravatar }}"
-      class="rounded-circle shadow-sm"
-      width="48"
-      height="48"
-      alt="Deleted User"
-    />
+      <div class="rounded-circle bg-light shadow-sm d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+         <i class="bi bi-bell-fill text-primary fs-5"></i>
+      </div>
     {% endif %}
   </div>
 
-  <div class="flex-grow-1">
-    <div class="mb-1" style="font-size: 0.95rem">
-      {% if notif.sender %}
-      <a
-        href="{{ url_for('user_profile', username=notif.sender.username) }}"
-        class="fw-bold text-dark text-decoration-none"
-      >
-        {{ notif.sender.name }}
-      </a>
-      {% else %}
-      <span class="fw-bold text-dark">Deleted User</span>
-      {% endif %}
+  <div class="flex-grow-1 min-vw-0"> 
+    
+    <a href="{{ notif.link_url }}" class="text-decoration-none d-block">
+        
+        <div class="mb-1 text-dark notif-title fw-bold" style="font-size: 0.95rem;">
+          {{ notif.title }}
+        </div>
+        
+        <div class="text-secondary small mb-2 notif-message-preview">
+          {{ notif.message }}
+        </div>
+    </a>
 
-      <span class="text-muted mx-1">
-        {% if notif.category == 'like' %} liked your post {% elif notif.category
-        == 'comment' %} commented on {% elif notif.category == 'post' %}
-        published a new post: {% elif notif.category == 'edit' %} updated their
-        post: {% else %} sent you a notification: {% endif %}
-      </span>
-
-      <a
-        href="{{ notif.link_url }}"
-        class="text-dark fw-medium text-decoration-none"
-        style="
-          text-decoration: underline !important;
-          text-underline-offset: 3px;
-          text-decoration-color: #dee2e6 !important;
-        "
-      >
-        "{{ notif.title }}"
-      </a>
-    </div>
-
-    <div class="text-muted small d-flex align-items-center">
+    <div class="text-muted d-flex align-items-center" style="font-size: 0.75rem; font-weight: 500;">
       {% if notif.category == 'like' %}
-      <i class="bi bi-heart-fill text-danger me-2"></i>
+        <i class="bi bi-heart-fill text-danger me-1"></i>
       {% elif notif.category == 'comment' %}
-      <i class="bi bi-chat-fill text-primary me-2"></i>
+        <i class="bi bi-chat-fill text-primary me-1"></i>
       {% elif notif.category == 'post' %}
-      <i class="bi bi-file-earmark-text-fill text-success me-2"></i>
+        <i class="bi bi-file-earmark-text-fill text-success me-1"></i>
       {% elif notif.category == 'edit' %}
-      <i class="bi bi-pencil-fill text-secondary me-2"></i>
+        <i class="bi bi-pencil-fill text-secondary me-1"></i>
+      {% else %}
+        <i class="bi bi-bell-fill text-info me-1"></i>
       {% endif %}
-      <span
-        class="smart-date"
-        data-utc="{{ notif.timestamp.isoformat() }}"
-      ></span>
+      
+      <span class="smart-date ms-1" data-utc="{{ notif.timestamp.isoformat() }}"></span>
     </div>
   </div>
 
   {% if not notif.is_read %}
-  <div class="flex-shrink-0 ms-2 unread-dot">
-    <span class="badge bg-primary rounded-circle p-1"
-      ><span class="visually-hidden">Unread</span></span
-    >
+  <div class="flex-shrink-0 ms-3 d-flex align-items-center mt-2">
+    <span class="badge bg-primary rounded-circle p-1 border border-light border-2 shadow-sm unread-dot" style="width: 12px; height: 12px;">
+        <span class="visually-hidden">Unread</span>
+    </span>
   </div>
   {% endif %}
+
 </div>
 {% endfor %}
+
+{% if next_ts %}
+<div class="new-cursor-data" data-next-ts="{{ next_ts }}" style="display: none;"></div>
+{% endif %}

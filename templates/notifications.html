@@ -1,7 +1,67 @@
-{% extends "base.html" %} 
+{% extends "base.html" %} {% block header %}
+<style>
+  /* Subtle row highlight on hover */
+  .transition-hover {
+    transition: background-color 0.2s ease;
+  }
+  .transition-hover:hover {
+    background-color: #f8f9fa !important;
+  }
 
-{% block header %}
-<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')">
+  /* Make avatars pop when hovered */
+  .avatar-hover {
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .avatar-hover:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+  }
+
+  .notif-message-preview {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+
+  /* The Twitter Pill */
+  .new-notif-pill {
+    position: fixed;
+    top: 80px; /* Adjust based on your navbar height */
+    left: 50%;
+    transform: translateX(-50%) translateY(-100px); /* Hidden above screen */
+    background-color: #0d6efd;
+    color: white;
+    padding: 8px 24px;
+    border-radius: 50px;
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.4);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 1050;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: none;
+  }
+  .new-notif-pill.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  .new-notif-pill:hover {
+    background-color: #0b5ed7;
+    transform: translateX(-50%) translateY(-2px);
+  }
+</style>
+
+<header
+  class="masthead"
+  style="background-image: url('{{ url_for('static', filename='assets/img/home-bg.jpg') }}')"
+>
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -13,161 +73,391 @@
     </div>
   </div>
 </header>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="container px-4 px-lg-5 mb-4">
   <div class="row justify-content-center">
     <div class="col-md-9 col-lg-8">
-      
-      {% with messages = get_flashed_messages(with_categories=true) %} 
-        {% if messages %} 
-          {% for category, message in messages %} 
-            <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          {% endfor %} 
-        {% endif %} 
-      {% endwith %}
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %} {% for category, message in messages %}
+      <div
+        class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4"
+        role="alert"
+      >
+        {{ message }}
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="alert"
+        ></button>
+      </div>
+      {% endfor %} {% endif %} {% endwith %}
 
-      <div class="d-flex justify-content-between align-items-end border-bottom pb-3 mb-4">
-        <h3 class="fw-bold mb-0"><i class="bi bi-bell-fill me-2 text-primary"></i>Activity</h3>
-        
-        {% if notifications %}
-        <button id="mark-read-btn" class="btn btn-sm btn-outline-secondary rounded-pill fw-bold px-3">
+      <div
+        class="d-flex justify-content-between align-items-end border-bottom pb-3 mb-4"
+      >
+        <h3 class="fw-bold mb-0">
+          <i class="bi bi-bell-fill me-2 text-primary"></i>Activity
+        </h3>
+
+        {% if notifications %} {% if unread_notifs > 0 %}
+        <button
+          id="mark-read-btn"
+          class="btn btn-sm btn-outline-secondary rounded-pill fw-bold px-3"
+        >
           <i class="bi bi-check2-all me-1"></i>Mark all as read
         </button>
-        {% endif %}
+        {% else %}
+        <button
+          id="mark-read-btn"
+          class="btn btn-sm btn-outline-secondary rounded-pill fw-bold px-3"
+          disabled
+        >
+          <i class="bi bi-check-circle-fill me-1 text-success"></i>All caught up
+        </button>
+        {% endif %} {% endif %}
       </div>
 
       {% if notifications %}
-      <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4" id="notifications-container">
-        
+
+      <button id="new-notif-pill" class="new-notif-pill">
+        ↑ <span id="new-notif-count">1</span> New Notification(s)
+      </button>
+      <div
+        class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4"
+        id="notifications-container"
+      >
         {% include "_notification_list.html" %}
-        
       </div>
 
       {% if has_next %}
-      <div id="loading-sentinel" data-next-page="{{ next_page }}" class="text-center py-4">
+      <div
+        id="loading-sentinel"
+        data-next-ts="{{ next_ts }}"
+        class="text-center py-4"
+      >
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
         </div>
       </div>
       {% endif %}
-      
-      <div id="end-of-content" class="text-center py-4 text-muted" style="display: none">
-        <p>You are all caught up!</p>
+
+      <div
+        id="end-of-content"
+        class="text-center py-4 text-muted"
+        style="display: none"
+      >
+        <p>You've reached the end!</p>
       </div>
 
       {% else %}
       <div class="text-center py-5 my-5">
-        <i class="bi bi-bell-slash display-1 text-muted opacity-25 mb-3 d-block"></i>
+        <i
+          class="bi bi-bell-slash display-1 text-muted opacity-25 mb-3 d-block"
+        ></i>
         <h4 class="text-muted fw-bold">Nothing to see here</h4>
         <p class="text-muted">You don't have any notifications right now.</p>
-        <a href="{{ url_for('get_all_posts') }}" class="btn btn-primary rounded-pill mt-2 px-4 shadow-sm">Go to Feed</a>
+        <a
+          href="{{ url_for('get_all_posts') }}"
+          class="btn btn-primary rounded-pill mt-2 px-4 shadow-sm"
+          >Go to Feed</a
+        >
       </div>
       {% endif %}
-
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-    
-    // --- MARK ALL AS READ LOGIC ---
-    const markReadBtn = document.getElementById("mark-read-btn");
-    
-    if (markReadBtn) {
-        markReadBtn.addEventListener("click", function() {
-            // UI Feedback: Spin the button
-            const originalText = this.innerHTML;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
-            this.disabled = true;
+  document.addEventListener("DOMContentLoaded", function () {
+    // --- 1. THE WAITING ROOM (Twitter Pill Logic) ---
+    let pendingNotifications = [];
+    const pillBtn = document.getElementById("new-notif-pill");
+    const pillCount = document.getElementById("new-notif-count");
+    const container = document.getElementById("notifications-container");
 
-            // Fire to the API (Uses your universal apiFetch from base.html!)
-            apiFetch('/api/notifications/read-all', { method: 'POST' })
-                .then(response => {
-                    if (!response) return null; // Session expired
-                    return response.json();
-                })
-                .then(data => {
-                    if (data && data.success) {
-                        // 1. Change all blue backgrounds to white
-                        document.querySelectorAll('.bg-primary.bg-opacity-10').forEach(row => {
-                            row.classList.remove('bg-primary', 'bg-opacity-10');
-                            row.classList.add('bg-white');
-                        });
-                        
-                        // 2. Remove all blue dots
-                        document.querySelectorAll('.unread-dot').forEach(dot => dot.remove());
+    function injectPendingNotifications() {
+      if (pendingNotifications.length === 0 || !container) return;
 
-                        // 3. Hide the navbar bell badge
-                        const bellBadge = document.getElementById("nav-notif-badge");
-                        if (bellBadge) bellBadge.classList.add("d-none");
+      // Inject all pending HTML strings at once
+      const allHtml = pendingNotifications.join("");
+      container.insertAdjacentHTML("afterbegin", allHtml);
 
-                        // 4. Update the button text
-                        markReadBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1 text-success"></i>All caught up';
-                    }
-                })
-                .catch(err => {
-                    console.error("Failed to mark read", err);
-                    this.innerHTML = originalText;
-                    this.disabled = false;
-                });
-        });
+      // Find them and animate them
+      pendingNotifications = []; // Clear queue
+      pillBtn.classList.remove("show"); // Hide pill
+
+      // Format dates
+      if (window.localizeTimes) window.localizeTimes(container);
     }
 
-    // --- INFINITE SCROLL LOGIC ---
+    // If user clicks the pill, scroll to top and inject
+    if (pillBtn) {
+      pillBtn.addEventListener("click", function () {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        // Wait for scroll to finish, then inject
+        setTimeout(injectPendingNotifications, 300);
+      });
+    }
+
+    // If user manually scrolls up to the top of the feed, inject automatically
+    window.addEventListener("scroll", function () {
+      if (container && pendingNotifications.length > 0) {
+        // Get where the container currently is on the user's screen
+        const rect = container.getBoundingClientRect();
+
+        // If rect.top is > -50, it means the very top edge of the notification
+        // card has entered the viewport. We use -50 to give a slight 50px buffer!
+        if (rect.top > 50) {
+          injectPendingNotifications();
+        }
+      }
+    });
+
+    // --- 2. REAL-TIME SOCKET LISTENER ---
+    if (window.socket) {
+      window.socket.on("new_notification_item", function (data) {
+        const emptyState = document.querySelector(".text-center.py-5.my-5");
+        if (emptyState) emptyState.remove();
+
+        let container = document.getElementById("notifications-container");
+        if (!container) {
+          const headerArea = document.querySelector(
+            ".d-flex.justify-content-between",
+          );
+          if (headerArea) {
+            container = document.createElement("div");
+            container.className =
+              "card border-0 shadow-sm rounded-4 overflow-hidden mb-4";
+            container.id = "notifications-container";
+            headerArea.parentNode.insertBefore(
+              container,
+              headerArea.nextSibling,
+            );
+          }
+        }
+
+        if (container) {
+          let categoryIcon = '<i class="bi bi-bell-fill text-info me-1"></i>';
+          if (data.category === "like")
+            categoryIcon = '<i class="bi bi-heart-fill text-danger me-1"></i>';
+          else if (data.category === "comment")
+            categoryIcon = '<i class="bi bi-chat-fill text-primary me-1"></i>';
+          else if (data.category === "post")
+            categoryIcon =
+              '<i class="bi bi-file-earmark-text-fill text-success me-1"></i>';
+          else if (data.category === "edit")
+            categoryIcon =
+              '<i class="bi bi-pencil-fill text-secondary me-1"></i>';
+
+          let avatarHtml = "";
+          if (
+            data.sender_username &&
+            !data.sender_username.startsWith("ghost_")
+          ) {
+            avatarHtml = `<a href="/user/${data.sender_username}" title="Visit ${data.sender_name}'s profile">
+                                      <img src="${data.icon_url}" class="rounded-circle shadow-sm avatar-hover" width="48" height="48" alt="${data.sender_name}" />
+                                    </a>`;
+          } else if (data.icon_url) {
+            avatarHtml = `<img src="${data.icon_url}" class="rounded-circle shadow-sm opacity-75" width="48" height="48" alt="Deleted User" />`;
+          } else {
+            avatarHtml = `<div class="rounded-circle bg-light shadow-sm d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                      <i class="bi bi-bell-fill text-primary fs-5"></i>
+                                    </div>`;
+          }
+
+          // Note: Animation classes handled by standard CSS now, injecting instantly
+          const notifHtml = `
+                  <div class="d-flex align-items-start p-3 border-bottom transition-hover bg-primary bg-opacity-10" id="notif-${data.id}">
+                    <div class="flex-shrink-0 me-3 position-relative mt-1">${avatarHtml}</div>
+                    <div class="flex-grow-1 min-vw-0"> 
+                      <a href="${data.link_url}" class="text-decoration-none d-block">
+                          <div class="mb-1 text-dark notif-title fw-bold" style="font-size: 0.95rem;">${data.title}</div>
+                          <div class="text-secondary small mb-2 notif-message-preview">
+                            ${data.message}
+                          </div>
+                      </a>
+                      <div class="text-muted d-flex align-items-center" style="font-size: 0.75rem; font-weight: 500;">
+                        ${categoryIcon}
+                        <span class="smart-date ms-1" data-utc="${data.timestamp}"></span>
+                      </div>
+                    </div>
+                    <div class="flex-shrink-0 ms-3 d-flex align-items-center mt-2">
+                      <span class="badge bg-primary rounded-circle p-1 border border-light border-2 shadow-sm unread-dot" style="width: 12px; height: 12px;">
+                          <span class="visually-hidden">Unread</span>
+                      </span>
+                    </div>
+                  </div>`;
+
+          // THE DECISION: Is the top of the feed visible on screen?
+          const rect = container.getBoundingClientRect();
+
+          if (rect.top > 50) {
+            // Inject immediately! The user is looking at the top of the list.
+            container.insertAdjacentHTML("afterbegin", notifHtml);
+            if (window.localizeTimes) window.localizeTimes(container);
+          } else {
+            // Put it in the waiting room and show the Pill! The user is scrolled down.
+            pendingNotifications.unshift(notifHtml); // Add to beginning of queue
+            if (pillCount) pillCount.innerText = pendingNotifications.length;
+            if (pillBtn) pillBtn.classList.add("show");
+          }
+
+          // Wake up the Mark Read button
+          const markReadBtn = document.getElementById("mark-read-btn");
+          if (markReadBtn && markReadBtn.disabled) {
+            markReadBtn.disabled = false;
+            markReadBtn.innerHTML =
+              '<i class="bi bi-check2-all me-1"></i>Mark all as read';
+          }
+        }
+      });
+    }
+
+    // --- 3. OPTIMISTIC UI ---
+    if (container) {
+      container.addEventListener("click", function (e) {
+        const link = e.target.closest("a");
+        if (!link) return;
+        const row = link.closest(".transition-hover");
+        if (row && row.classList.contains("bg-primary")) {
+          row.classList.remove("bg-primary", "bg-opacity-10");
+          row.classList.add("bg-white");
+          const dot = row.querySelector(".unread-dot");
+          if (dot) dot.remove();
+        }
+      });
+    }
+
+    // --- 4. MARK ALL AS READ LOGIC ---
+    const markReadBtn = document.getElementById("mark-read-btn");
+    if (markReadBtn) {
+      markReadBtn.addEventListener("click", function () {
+        const originalText = this.innerHTML;
+        this.innerHTML =
+          '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        this.disabled = true;
+
+        apiFetch("/api/notifications/read-all", { method: "POST" })
+          .then((response) => {
+            if (!response) return null;
+            return response.json();
+          })
+          .then((data) => {
+            if (data && data.success) {
+              document
+                .querySelectorAll(".bg-primary.bg-opacity-10")
+                .forEach((row) => {
+                  row.classList.remove("bg-primary", "bg-opacity-10");
+                  row.classList.add("bg-white");
+                });
+              document
+                .querySelectorAll(".unread-dot")
+                .forEach((dot) => dot.remove());
+              const bellBadge = document.getElementById("nav-notif-badge");
+              if (bellBadge) bellBadge.classList.add("d-none");
+              markReadBtn.innerHTML =
+                '<i class="bi bi-check-circle-fill me-1 text-success"></i>All caught up';
+            }
+          })
+          .catch((err) => {
+            this.innerHTML = originalText;
+            this.disabled = false;
+          });
+      });
+    }
+
+    // --- 5. INFINITE SCROLL LOGIC (Now using Cursor!) ---
     const sentinel = document.getElementById("loading-sentinel");
-    const container = document.getElementById("notifications-container");
     const endMessage = document.getElementById("end-of-content");
     let isLoading = false;
 
     if (sentinel) {
-      const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && !isLoading) {
-          isLoading = true;
-          const nextPage = sentinel.getAttribute("data-next-page");
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && !isLoading) {
+            isLoading = true;
 
-          if (!nextPage || nextPage === "None") {
-             sentinel.remove();
-             if (endMessage) endMessage.style.display = "block";
-             return;
-          }
+            // Grab the timestamp cursor instead of page number
+            const nextTs = sentinel.getAttribute("data-next-ts");
 
-          apiFetch(`/notifications/load?page=${nextPage}`)
-            .then(response => {
+            if (!nextTs || nextTs === "None") {
+              sentinel.remove();
+              if (endMessage) endMessage.style.display = "block";
+              return;
+            }
+
+            // Use the ?before parameter!
+            apiFetch(`/notifications/load?before=${encodeURIComponent(nextTs)}`)
+              .then((response) => {
                 if (!response) return null;
                 return response.text();
-            })
-            .then(html => {
-              if (html && html.trim().length > 0) {
-                container.insertAdjacentHTML('beforeend', html);
-                
-                // Uses your exact date logic from base.html
-                if (window.localizeTimes) window.localizeTimes(container);
-                
-                sentinel.setAttribute("data-next-page", parseInt(nextPage) + 1);
+              })
+              .then((html) => {
+                if (html && html.trim().length > 0) {
+                  // 1. Inject the new HTML items
+                  container.insertAdjacentHTML("beforeend", html);
+                  if (window.localizeTimes) window.localizeTimes(container);
+
+                  // 2. THE FIX: Find ALL cursor divs, grab the last one, and nuke the rest
+                  const cursorDivs =
+                    container.querySelectorAll(".new-cursor-data");
+                  if (cursorDivs.length > 0) {
+                    const newestCursor = cursorDivs[cursorDivs.length - 1];
+
+                    // Update sentinel with the NEW timestamp
+                    sentinel.setAttribute(
+                      "data-next-ts",
+                      newestCursor.getAttribute("data-next-ts"),
+                    );
+
+                    // Clean up all cursor tracking divs so the DOM stays clean
+                    cursorDivs.forEach((d) => d.remove());
+                    isLoading = false;
+                  } else {
+                    // If no secret div came back, we are out of data!
+                    sentinel.remove();
+                    if (endMessage) endMessage.style.display = "block";
+                  }
+                } else {
+                  sentinel.remove();
+                  if (endMessage) endMessage.style.display = "block";
+                }
+              })
+              .catch((err) => {
+                sentinel.style.display = "none";
                 isLoading = false;
-              } else {
-                sentinel.remove();
-                if (endMessage) endMessage.style.display = "block";
-              }
-            })
-            .catch(err => {
-              console.error("Error loading notifications:", err);
-              sentinel.style.display = "none";
-              isLoading = false;
-            });
-        }
-      }, { rootMargin: "200px" });
+              });
+          }
+        },
+        { rootMargin: "200px" },
+      );
 
       observer.observe(sentinel);
     }
-});
+  });
+
+  // ==========================================
+  // 6. ADVANCED BFCACHE BUSTER (Fixes Safari/Chrome "Back" bug)
+  // ==========================================
+  window.addEventListener("pageshow", function (event) {
+    let isBackNavigation = event.persisted;
+
+    // Fallback: Check the modern Performance API to catch lying browsers
+    if (
+      !isBackNavigation &&
+      window.performance &&
+      window.performance.getEntriesByType
+    ) {
+      const navEntries = window.performance.getEntriesByType("navigation");
+      if (navEntries.length > 0 && navEntries[0].type === "back_forward") {
+        isBackNavigation = true;
+      }
+    }
+
+    // If we detect a back-button navigation, force a hard reload from the server
+    if (isBackNavigation) {
+      window.location.reload();
+    }
+  });
 </script>
 {% endblock %}
