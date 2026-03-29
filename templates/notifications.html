@@ -144,7 +144,7 @@
       <div
         id="end-of-content"
         class="text-center py-4 text-muted"
-        style="display: none"
+        {% if has_next %}style="display: none"{% endif %}
       >
         <p>You've reached the end!</p>
       </div>

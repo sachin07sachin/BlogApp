@@ -673,6 +673,15 @@
             </div>
           </div>
           {% endif %}
+          {% if post.comments|length > 0 %}
+          <div
+            id="end-of-comments"
+            class="text-center py-4 text-muted"
+            {% if comments_pagination.has_next %}style="display: none"{% endif %}
+          >
+            <p class="mb-0">You've reached the end of the comments.</p>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -995,7 +1004,8 @@
     // 3. INFINITE SCROLL LOGIC
     const sentinel = document.getElementById("loading-sentinel");
     const container = document.getElementById("comments-container");
-    let isLoading = false; // FIX: Prevent double-fetching
+    const endMessage = document.getElementById("end-of-comments"); // <-- Grab the new div
+    let isLoading = false;
 
     if (sentinel) {
       const observer = new IntersectionObserver(
@@ -1004,22 +1014,24 @@
             const postId = sentinel.getAttribute("data-post-id");
             const nextPage = sentinel.getAttribute("data-next-page");
 
-            if (!nextPage || nextPage === "None") return;
+            // If there's no next page, hide sentinel and show end message
+            if (!nextPage || nextPage === "None") {
+              sentinel.style.display = "none";
+              if (endMessage) endMessage.style.display = "block";
+              return;
+            }
+
             isLoading = true; // Lock
 
             apiFetch(`/post/${postId}/load-comments?page=${nextPage}`)
               .then((response) => {
-                // 1. If apiFetch handled a redirect/error, it returns null. Stop here.
                 if (!response) return null;
-
-                // 2. If valid, get the HTML text
                 return response.text();
               })
               .then((html) => {
                 if (html && html.trim().length > 0) {
                   container.insertAdjacentHTML("beforeend", html);
 
-                  // --- FIX: Run Time Conversion on New Elements ---
                   if (window.localizeTimes) {
                     window.localizeTimes(container);
                   }
@@ -1027,7 +1039,9 @@
                   const nextNum = parseInt(nextPage) + 1;
                   sentinel.setAttribute("data-next-page", nextNum);
                 } else {
+                  // API returned empty HTML, hide sentinel and show end message
                   sentinel.style.display = "none";
+                  if (endMessage) endMessage.style.display = "block";
                 }
                 isLoading = false; // Unlock
               })
@@ -1038,7 +1052,7 @@
               });
           }
         },
-        { rootMargin: "200px" }, // Load early
+        { rootMargin: "200px" },
       );
 
       observer.observe(sentinel);
