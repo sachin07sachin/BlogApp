@@ -10980,3 +10980,82 @@ select:-webkit-autofill {
   transition: background-color 5000s ease-in-out 0s;
 }
 
+/* ==========================================
+   MOBILE NAVBAR: TRANSPARENT AT TOP (Option A)
+   ========================================== */
+@media (max-width: 991px) {
+  /* 1. Default State (Top of page): Transparent with white text */
+  #mainNav {
+    background-color: transparent !important;
+    border-bottom: none !important;
+  }
+  
+  #mainNav .navbar-brand,
+  #mainNav .navbar-toggler {
+    color: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+  }
+  
+  /* Invert the hamburger icon to white */
+  #mainNav .navbar-toggler-icon {
+    filter: invert(1) grayscale(100%) brightness(200%);
+  }
+
+  /* 2. When the menu is clicked OPEN at the top of the page */
+  #navbarResponsive {
+    background-color: rgba(255, 255, 255, 0.98);
+    border-radius: 12px;
+    padding: 10px;
+    margin-top: 15px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  
+  /* Force dropdown links to be dark so they are readable */
+  #navbarResponsive .nav-link {
+    color: #212529 !important;
+  }
+
+  /* 3. When Scrolling: Apply the solid white sliding navbar */
+  #mainNav.is-fixed {
+    position: fixed;
+    top: -80px; /* Hide above screen */
+    left: 0;
+    right: 0;
+    z-index: 1030;
+    background-color: rgba(255, 255, 255, 0.98) !important; 
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1);
+  }
+  
+  #mainNav.is-visible {
+    transform: translateY(80px); /* Slide down into view */
+  }
+
+  /* 4. When sliding navbar is visible, revert text and icons back to DARK */
+  #mainNav.is-fixed .navbar-brand,
+  #mainNav.is-fixed .navbar-toggler {
+    color: #212529 !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+  }
+  
+  #mainNav.is-fixed .navbar-toggler-icon {
+    filter: none !important; /* Revert icon to dark grey */
+  }
+  
+  /* Flatten the dropdown menu so it blends into the solid white navbar */
+  #mainNav.is-fixed #navbarResponsive {
+    margin-top: 10px;
+    box-shadow: none;
+    border-top: 1px solid #eee;
+    border-radius: 0 0 12px 12px;
+  }
+}
+
+
+/* Remove the click "glow" animation from the mobile menu button */
+#mainNav .navbar-toggler:focus,
+#mainNav .navbar-toggler:active {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
