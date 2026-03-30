@@ -7,13 +7,33 @@
 
   .input-group .btn-outline-secondary {
     border-color: #ced4da; /* Force consistent border color with input */
+    border-top: 0;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0; /* Removes Bootstrap's default curve so it's a flat line */
+    background-color: transparent;
     z-index: 2;
   }
 
-  /* FIXED: Added high z-index and forced border visibility for the eye button */
-  .input-group:focus-within .btn-outline-secondary {
-    border-color: #80c2d0; /* Matches your theme focus color */
-    z-index: 5 !important; /* Forces the button borders to stay above the input glow */
+  /* Prevent the button from turning grey, glowing blue, or showing extra borders when clicked */
+  .input-group .btn-outline-secondary:hover,
+  .input-group .btn-outline-secondary:active,
+  .input-group .btn-outline-secondary:focus,
+  .input-group .btn-outline-secondary:focus-visible {
+    background-color: transparent !important;
+    color: #495057 !important;
+    box-shadow: none !important; /* Kills the blue Bootstrap glow */
+    outline: none !important;    /* Kills the default browser outline */
+    border-color: #ced4da !important;
+  }
+
+  /* THE FIX: Only turn the button border blue when the INPUT is focused */
+  /* Added hover/active states here so the line stays perfectly blue while clicking the eye */
+  .form-floating:focus-within + .btn-outline-secondary,
+  .form-floating:focus-within + .btn-outline-secondary:hover,
+  .form-floating:focus-within + .btn-outline-secondary:active {
+    border-color: #80c2d0 !important; /* Matches your theme focus color */
+    z-index: 5 !important;
   }
 
   /* 2. Making footer links stand out (Modern Typography) */
@@ -259,7 +279,14 @@
   const regIcon = document.getElementById("icon-reg");
 
   if (regToggle) {
+
+    // THE FIX: Stop the button from stealing focus in the first place
+    regToggle.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+    });
+
     regToggle.addEventListener("click", function () {
+      const textLength = regField.value.length;
       const type =
         regField.getAttribute("type") === "password" ? "text" : "password";
       regField.setAttribute("type", type);
@@ -271,6 +298,11 @@
         regIcon.classList.remove("bi-eye-slash");
         regIcon.classList.add("bi-eye");
       }
+
+      setTimeout(() => {
+        regField.focus();
+        regField.setSelectionRange(textLength, textLength);
+      }, 10);
     });
   }
 
