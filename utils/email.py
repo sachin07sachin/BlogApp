@@ -5,6 +5,7 @@ import logging
 import socket
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +38,20 @@ def send_email(to: str, subject: str, html_body: str, reply_to: str = None):
     smtp_user = os.environ["SMTP_USERNAME"]
     smtp_pass = os.environ["SMTP_PASSWORD"]
     from_email = os.environ.get("SMTP_SENDER_EMAIL", smtp_user)
+    support_email = os.environ.get("CONTACT_RECEIVER_EMAIL")
 
     msg = MIMEMultipart()
-    msg["From"] = from_email
+    display_name = "QuillOrbis" 
+    msg["From"] = formataddr((display_name, from_email))
     msg["To"] = to
     msg["Subject"] = subject
+
+    # If a specific reply_to was passed (like the user's email from the contact form), use it.
+    # Otherwise, safely default to your support_email for all automated system messages.
+    actual_reply_to = reply_to or support_email
     
-    if reply_to:
-        msg.add_header('Reply-To', reply_to)
+    if actual_reply_to:
+        msg.add_header('Reply-To', actual_reply_to)
 
     msg.attach(MIMEText(html_body, "html"))
 
@@ -66,7 +73,7 @@ def send_email(to: str, subject: str, html_body: str, reply_to: str = None):
         
         # CASE A: Port 465 (SSL/TLS Implicit) - Uses our Patched Class
         if smtp_port == 465:
-            # We use our custom class to handle the IP/Hostname split cleanly
+            # use our custom class to handle the IP/Hostname split cleanly
             with PatchedSMTP_SSL(target_ip, smtp_port, context=context, real_hostname=smtp_host) as server:
                 server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
