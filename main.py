@@ -2536,9 +2536,23 @@ def contact():
                 )
                 db.session.add(msg)
 
-            # 2. Send Email
-            html_body = render_template("email/contact_message.html", name=form.name.data, email=form.email.data, message=form.message.data)
-            send_email(to=os.environ["CONTACT_RECEIVER_EMAIL"], subject="New Contact Form Message", html_body=html_body, reply_to=form.email.data)
+            # 2. Send Emails
+            admin_html_body = render_template("email/contact_message.html", name=form.name.data, email=form.email.data, message=form.message.data)
+            user_html_body = render_template("email/contact_confirmation.html", name=form.name.data, message=form.message.data)
+            
+            send_email(
+                to=os.environ["CONTACT_RECEIVER_EMAIL"],
+                subject=f"New Contact Form Message from {form.name.data}",
+                html_body=admin_html_body,
+                reply_to=form.email.data
+            )
+
+            send_email(
+                to=form.email.data,
+                subject="We've received your request - QuillOrbis Support",
+                html_body=user_html_body
+            )
+            
             flash("Your message has been sent successfully!", "success")
             return redirect(url_for('contact'))
         except Exception:
