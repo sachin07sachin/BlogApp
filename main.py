@@ -50,6 +50,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from urllib.parse import urlparse, unquote
+import socket
+import ipaddress
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
 from calendar import month_name
@@ -559,6 +561,30 @@ def get_gravatar_url(email, size=200):
 
 # --- SECURITY UTILITIES (Malware & DoS Protection) ---
 
+def is_safe_url(url):
+    """
+    SECURITY: Validates that a URL does not resolve to a local or private IP.
+    Mitigates Server-Side Request Forgery (SSRF) attacks.
+    """
+    try:
+        parsed = urlparse(url)
+        # Block non-HTTP protocols (e.g., file://, ftp://)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+            
+        # Resolve the hostname to an IP address
+        ip = socket.gethostbyname(parsed.hostname)
+        ip_obj = ipaddress.ip_address(ip)
+        
+        # Block private, loopback, and unroutable IPs
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+            return False
+            
+        return True
+    except Exception as e:
+        logger.warning(f"URL validation failed for {url}: {e}")
+        return False
+
 def validate_image_stream(stream):
     """
     SECURITY: Reads the first 512 bytes of a file/stream to verify it is actually an image.
@@ -596,6 +622,10 @@ def validate_and_download_url(url):
     Returns: (bytes_data, error_message)
     """
     MAX_SIZE = 8 * 1024 * 1024  # 8 MB limit (Matches Upload Limit)
+
+    # SSRF Protection Check
+    if not is_safe_url(url):
+        return None, "Invalid or unauthorized URL."
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -1125,11 +1155,26 @@ def handle_csrf_error(e):
     # 2. STANDARD: HTML Form Request (Browser)
     if request.method == "POST":
         try:
-            # Convert ImmutableMultiDict to a regular dict and remove the invalid token
-            restored_data = {k: v for k, v in request.form.items() if k != "csrf_token"}
-            session["restored_form_data"] = restored_data
-        except Exception:
-            pass # Fail silently if form parsing errors
+            # Filter sensitive data and enforce size limits
+            unsafe_keys = ["password", "confirm_password", "old_password", "body"]
+            
+            restored_data = {
+                k: v for k, v in request.form.items() 
+                if k != "csrf_token" and k not in unsafe_keys
+            }
+            
+            # Convert to string to check byte size (Browsers limit cookies to ~4KB)
+            import json
+            payload_string = json.dumps(restored_data)
+            
+            # Only save to session if it's comfortably under the 4KB limit
+            if len(payload_string.encode('utf-8')) < 3000:
+                session["restored_form_data"] = restored_data
+            else:
+                logger.warning("Prevented session cookie overflow from oversized form payload.")
+                
+        except Exception as e:
+            logger.warning(f"Failed to process CSRF form recovery: {e}")
     
     flash("Your session expired. Please try again.", "warning")
     return redirect(request.referrer or url_for("login_get"))
