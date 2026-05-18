@@ -388,8 +388,16 @@
 
             // Use the ?before parameter!
             apiFetch(`/notifications/load?before=${encodeURIComponent(nextTs)}`)
-              .then((response) => {
+              .then(async (response) => {
                 if (!response) return null;
+                
+                // --- THE MISSING 429 CATCHER ---
+                if (response.status === 429) {
+                    const errorHtml = await response.text();
+                    throw { name: 'RateLimitError', html: errorHtml }; 
+                }
+                
+                if (!response.ok) throw new Error("Network response was not ok");
                 return response.text();
               })
               .then((html) => {
@@ -399,8 +407,7 @@
                   if (window.localizeTimes) window.localizeTimes(container);
 
                   // 2. THE FIX: Find ALL cursor divs, grab the last one, and nuke the rest
-                  const cursorDivs =
-                    container.querySelectorAll(".new-cursor-data");
+                  const cursorDivs = container.querySelectorAll(".new-cursor-data");
                   if (cursorDivs.length > 0) {
                     const newestCursor = cursorDivs[cursorDivs.length - 1];
 
@@ -424,8 +431,23 @@
                 }
               })
               .catch((err) => {
-                sentinel.style.display = "none";
-                isLoading = false;
+                // --- THE MISSING RATE LIMIT HANDLER ---
+                if (err && err.name === 'RateLimitError') {
+                    const warningNode = document.createElement('div');
+                    warningNode.innerHTML = err.html;
+                    sentinel.parentNode.insertBefore(warningNode, sentinel);
+                    sentinel.style.display = "none"; // Pause observer
+                    
+                    setTimeout(() => {
+                        warningNode.remove();
+                        sentinel.style.display = "block"; // Resume observer
+                        isLoading = false; 
+                    }, 3000);
+                } else {
+                    console.error("Error loading notifications:", err);
+                    sentinel.style.display = "none";
+                    isLoading = false;
+                }
               });
           }
         },
