@@ -922,10 +922,23 @@ endblock %} {% block header %}
       const oldScrollHeight = chatHistory.scrollHeight;
       const nextPage = currentPage + 1;
 
+      let isRateLimited = false; 
+
       try {
-        const response = await fetch(
+        const fetchFn = window.apiFetch || fetch;
+        const response = await fetchFn(
           `/api/chat/${RECIPIENT_ID}/history?page=${nextPage}`,
         );
+
+        if (!response) {
+            isRateLimited = true; // Mark as rate limited
+            
+            setTimeout(() => {
+                isLoadingHistory = false;
+                if (loadingSpinner) loadingSpinner.classList.add("d-none");
+            }, 3000);
+            return; 
+        }
         const data = await response.json();
 
         if (data.messages && data.messages.length > 0) {
@@ -1036,6 +1049,7 @@ endblock %} {% block header %}
       } catch (err) {
         console.error("History load error", err);
       } finally {
+        if (isRateLimited) return;
         isLoadingHistory = false;
 
         // 2. Hide Spinner
