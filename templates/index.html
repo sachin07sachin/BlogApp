@@ -277,8 +277,8 @@
     </div>
   </div>
 
-  {% if all_posts|length > 0 %} {% if current_user.is_authenticated and (not
-  search_message or search_message == "All Posts") %}
+  {% if current_user.is_authenticated and (not search_message or search_message
+  == "All Posts") %}
   <div class="row justify-content-center mb-5">
     <div class="col-md-9 col-lg-8">
       <div class="card border-0 shadow-sm" style="border-radius: 12px">
@@ -309,20 +309,35 @@
 
   <div class="row justify-content-center mb-4">
     <div class="col-md-9 col-lg-8">
-      <h5 class="fw-bold border-bottom pb-3" id="results-anchor">
+      <div
+        class="d-flex justify-content-between align-items-center border-bottom pb-3"
+        id="results-anchor"
+      >
+        <h5 class="fw-bold mb-0">
+          {% if search_message and search_message != "All Posts" %}
+          <i class="bi bi-search me-2"></i>Search Results {% else %}
+          <i class="bi bi-card-list me-2"></i>Explore {% endif %}
+        </h5>
+
         {% if search_message and search_message != "All Posts" %}
-        <i class="bi bi-search me-2"></i>Search Results {% else %}
-        <i class="bi bi-card-list me-2"></i>Latest Posts {% endif %}
-      </h5>
+        <a
+          href="{{ url_for('get_all_posts') }}"
+          class="btn btn-sm btn-outline-secondary rounded-pill px-3 shadow-sm clear-search-btn"
+        >
+          <i class="bi bi-x-lg me-1" style="font-size: 0.75rem"></i> Clear
+          Search
+        </a>
+        {% endif %}
+      </div>
     </div>
   </div>
 
+  {% if all_posts|length > 0 %}
   <div
     class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4"
     id="posts-container"
   >
     {% with posts = all_posts %} {% include "_post_list.html" %} {% endwith %}
-    
   </div>
   {% if has_next %}
   <div
@@ -339,7 +354,13 @@
   <div
     id="end-of-content"
     class="text-center py-5 text-muted"
-    {% if has_next %}style="display: none"{% endif %}
+    {%
+    if
+    has_next
+    %}style="display: none"
+    {%
+    endif
+    %}
   >
     <p>You've reached the end!</p>
   </div>
@@ -357,9 +378,12 @@
       <p class="text-muted mb-4 lead">
         We couldn't find anything matching your search.
       </p>
-      <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-secondary"
-        >Clear Search</a
+      <a
+        href="{{ url_for('get_all_posts') }}"
+        class="btn btn-outline-secondary rounded-pill px-4 shadow-sm clear-search-btn"
       >
+        <i class="bi bi-x-lg me-1" style="font-size: 0.85rem"></i> Clear Search
+      </a>
       {% else %}
       <h3 class="fw-bold text-muted">No posts published yet</h3>
       <p class="text-muted mb-4 lead">It feels a little quiet in here.</p>
@@ -437,6 +461,30 @@
     const fab = document.getElementById("composeButton");
     const footer = document.querySelector("footer");
 
+    // --- CLEAR SEARCH SPINNER LOGIC ---
+      const clearSearchBtns = document.querySelectorAll(".clear-search-btn");
+
+      clearSearchBtns.forEach(btn => {
+          btn.addEventListener("click", function (e) {
+              // 1. Prevent multiple clicks if already spinning
+              if (this.classList.contains("disabled")) {
+                  e.preventDefault();
+                  return;
+              }
+
+              // 2. Lock the width so the button doesn't shrink
+              const originalWidth = this.offsetWidth;
+              this.style.width = originalWidth + "px";
+
+              // 3. Disable the button visually and functionally
+              this.classList.add("disabled");
+              this.style.pointerEvents = "none";
+
+              // 4. Inject the Bootstrap spinner
+              this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+          });
+      });
+
     // --- SEARCH AUTO SCROLL LOGIC ---
     const isSearchActive = {{ 'true' if search_message and search_message != 'All Posts' else 'false' }};
     if (isSearchActive) {
@@ -509,7 +557,7 @@
         // --- 1. DETECT NAVIGATION TYPE ---
         const navEntries = performance.getEntriesByType("navigation");
         const isBackNavigation = navEntries.length > 0 && navEntries[0].type === "back_forward";
-        
+
         // --- 2. CHECK FOR MUTATIONS (Edit/Delete) ---
         const needsRefresh = localStorage.getItem("feed_needs_refresh");
 
@@ -519,7 +567,7 @@
 
         // --- 3. RESTORE SNAPSHOT (Happy Path) ---
         if (isBackNavigation && !needsRefresh && savedHtml && savedScroll) {
-            
+
             // Temporarily disable native scroll to prevent screen jitter
             if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
@@ -530,12 +578,12 @@
             document.querySelectorAll('.like-btn').forEach(btn => {
                 const pId = btn.getAttribute('data-post-id');
                 const syncData = localStorage.getItem(`sync_like_${pId}`);
-                
+
                 if (syncData) {
                     const { count, liked } = JSON.parse(syncData);
                     const icon = btn.querySelector('.heart-icon');
                     const countSpan = btn.querySelector('.like-count');
-                    
+
                     if (icon) {
                         if (liked) {
                             icon.classList.remove('bi-heart');
@@ -564,14 +612,14 @@
             sessionStorage.removeItem(cacheKeyHTML);
             sessionStorage.removeItem(cacheKeyPage);
             sessionStorage.removeItem(cacheKeyScroll);
-            
+
         } else {
             // --- 4. CACHE INVALIDATION (Dirty Path) ---
             // If it was a standard redirect/refresh, clear memory.
             sessionStorage.removeItem(cacheKeyHTML);
             sessionStorage.removeItem(cacheKeyPage);
             sessionStorage.removeItem(cacheKeyScroll);
-            
+
             // If they used the back button but the cache was flagged as dirty (Post Deleted/Edited)
             if (isBackNavigation && needsRefresh) {
                 localStorage.removeItem("feed_needs_refresh");
@@ -629,9 +677,16 @@
 
           // Fetch the next page of posts using the dynamically generated URL
           apiFetch(finalUrl)
-            .then(response => {
-                // Safety: If redirected to login (session dead), response is null
+            .then(async response => {
                 if (!response) return null;
+                
+                // --- NEW: CATCH 429 RATE LIMITS ---
+                if (response.status === 429) {
+                    const errorHtml = await response.text();
+                    throw { name: 'RateLimitError', html: errorHtml }; 
+                }
+                
+                if (!response.ok) throw new Error("Network response was not ok");
                 return response.text();
             })
             .then(html => {
@@ -652,9 +707,22 @@
               }
             })
             .catch(err => {
-              console.error("Error loading posts:", err);
-              sentinel.style.display = "none";
-              isLoading = false;
+              if (err && err.name === 'RateLimitError') {
+                  const warningNode = document.createElement('div');
+                  warningNode.innerHTML = err.html;
+                  sentinel.parentNode.insertBefore(warningNode, sentinel);
+                  sentinel.style.display = "none"; // Pause observer
+                  
+                  setTimeout(() => {
+                      warningNode.remove();
+                      sentinel.style.display = "block"; // Resume observer
+                      isLoading = false; 
+                  }, 3000);
+              } else {
+                  console.error("Error loading posts:", err);
+                  sentinel.style.display = "none";
+                  isLoading = false;
+              }
             });
         }
       }, { rootMargin: "200px" }); // Start loading 200px before reaching the bottom
