@@ -23,7 +23,7 @@ class CreatePostForm(FlaskForm):
         default="checked",
         render_kw={"class": "form-check-input"}
     )
-    submit = SubmitField("Submit Post")
+    # submit = SubmitField("Submit Post")
 
 
 class RegisterForm(FlaskForm):
