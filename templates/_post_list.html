@@ -1,6 +1,12 @@
 {% for post in posts %}
 <div class="col">
-  <div class="card post-card h-100" id="post-{{ post.id }}">
+  <div class="card post-card h-100 position-relative" id="post-{{ post.id }}">
+    <!-- Draft Visual Badge -->
+    {% if not post.is_published %}
+    <div class="position-absolute top-0 end-0 p-3" style="z-index: 2;">
+        <span class="badge bg-secondary rounded-pill shadow-sm"><i class="bi bi-lock-fill me-1"></i>Draft</span>
+    </div>
+    {% endif %}
     {% if post.img_url %}
     <a href="{{ url_for('show_post', post_id=post.id) }}">
       <div class="card-img-container">
@@ -34,6 +40,7 @@
       <div
         class="d-flex align-items-end justify-content-between mt-auto border-top pt-3"
       >
+      {% if post.is_published %}
         <div class="d-flex align-items-center">
           <img
             src="{{ post.author.email | gravatar }}"
@@ -94,6 +101,7 @@
               data-bs-target="#deletePostModal"
               data-post-id="{{ post.id }}"
               data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+              data-post-type="post"
               title="Delete Post"
             >
               <i class="bi bi-trash-fill"></i>
@@ -101,6 +109,28 @@
             {% endif %}
           {% endif %}
         </div>
+        
+        {% else %}
+
+        <div class="d-flex align-items-center justify-content-end w-100 gap-2">
+          <a href="{{ url_for('edit_post', post_id=post.id) }}" class="btn btn-sm btn-primary rounded-pill px-3 fw-bold shadow-sm">
+            <i class="bi bi-pencil-square me-1"></i> Continue
+          </a>
+          
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold shadow-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#deletePostModal"
+            data-post-id="{{ post.id }}"
+            data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+            data-post-type="draft"
+            title="Delete Draft"
+          >
+            <i class="bi bi-trash"></i> Delete
+          </button>
+        </div>
+      {% endif %}
       </div>
     </div>
   </div>
