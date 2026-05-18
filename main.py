@@ -214,6 +214,8 @@ RATE_LIMIT_LOGIN_GLOBAL = "60 per hour"
 RATE_LIMIT_LOGIN_SPECIFIC = "10 per minute"
 RATE_LIMIT_EMAIL_GLOBAL = "20 per hour"
 RATE_LIMIT_EMAIL_SPECIFIC = "5 per hour"
+RATE_LIMIT_REGISTER_GLOBAL = "20 per hour" 
+RATE_LIMIT_REGISTER_SPECIFIC = "10 per hour"
 MAX_LOGIN_ATTEMPTS = 5
 DUMMY_PASSWORD_HASH = generate_password_hash("dummy_password_for_timing_protection")
 
@@ -328,6 +330,8 @@ class BlogPost(db.Model):
 
     # Moderation
     can_comment: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     
     comments = relationship("Comment", back_populates="parent_post", passive_deletes=True)
 
@@ -494,6 +498,19 @@ class AdminLog(db.Model):
 # -------------------------------------------------------------------
 
 gravatar = Gravatar(app, size=100, rating="g", default="retro", use_ssl=True)
+
+# def user_id_rate_limit_key():
+#     return str(current_user.id)
+
+def hybrid_rate_limit_key():
+    """
+    Solves the 'Library Problem' for logged-in users while protecting against guest bots.
+    - If logged in: Limits by unique User ID (Perfect precision).
+    - If guest: Limits by IP Address (Broad, but necessary).
+    """
+    if current_user.is_authenticated:
+        return f"user:{current_user.id}"
+    return f"ip:{get_remote_address()}"
 
 @contextlib.contextmanager
 def safe_commit():
@@ -1181,20 +1198,57 @@ def handle_csrf_error(e):
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit(e):
+
+    # 1. Identify if this is a background AJAX request
+    is_ajax = (
+        request.is_json or
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        'application/json' in request.headers.get('Accept', '') or
+        request.path.startswith('/api/') or
+        request.path.startswith('/like/') or
+        request.path.endswith('/load') or
+        request.path.endswith('/load-comments') or
+        request.path == '/upload-image'
+    )
+
+    if is_ajax:
+        logger.warning(f"AJAX Rate limit exceeded ({e.description}) IP={get_remote_address()}")
+        
+        # A. Infinite Scroll requests expect HTML fragments. 
+        # If we send JSON, it prints code on the screen. We send a polite HTML block instead.
+        if request.path.endswith('/load') or request.path.endswith('/load-comments'):
+            html_error = '<div class="text-center text-muted p-3 w-100 fw-bold"><i class="bi bi-speedometer2"></i> You are moving too fast. Please wait a moment.</div>'
+            return html_error, 429
+            
+        # B. Buttons and TinyMCE Image Uploads expect JSON.
+        return jsonify({"error": f"You are moving too fast. {e.description}"}), 429
+    
     if app.config["CAPTCHA_ENABLED"]:
         session["captcha_required"] = True
     
     logger.warning(f"Rate limit exceeded ({e.description}) IP={get_remote_address()} email={request.form.get('email', 'unknown')}")
-    flash("Too many requests detected. Please verify you are human.", "danger")
 
     endpoint = request.endpoint
     if endpoint == "login_post":
+        flash("Too many requests detected. Please verify you are human.", "danger")
         return render_template("login.html", login_form=LoginForm(), captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]), 429
     elif endpoint == "resend_verification_post":
+        flash("Too many requests detected. Please verify you are human.", "danger")
         return render_template("resend_verification.html", resend_form=ResendVerificationForm(), captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]), 429
     elif endpoint == "request_reset_post":
+        flash("Too many requests detected. Please verify you are human.", "danger")
         return render_template("request_reset.html", form=RequestResetForm(), captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]), 429
+    elif endpoint == "register":
+        flash("Too many requests detected. Please verify you are human.", "danger")
+        return render_template("register.html", form=RegisterForm(), captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]), 429
     
+    # Standard Blog Route Handling (e.g., Publish/Edit Post)
+    # If they are logged in and spamming "Publish", just warn them and send them back to the page
+    if current_user.is_authenticated:
+        flash(f"Whoa there! You are moving too fast. {e.description}", "warning")
+        return redirect(request.referrer or url_for('get_all_posts'))
+    
+    flash("Too many requests detected. Please verify you are human.", "danger")
     return redirect(url_for("login_get"))
 
 @app.after_request
@@ -1237,10 +1291,21 @@ def health():
 # -------------------------------------------------------------------
 
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit(RATE_LIMIT_REGISTER_GLOBAL, key_func=get_remote_address, exempt_when=match_captcha_bypass, methods=["POST"])
+@limiter.limit(RATE_LIMIT_REGISTER_SPECIFIC, key_func=email_rate_limit_key, exempt_when=match_captcha_bypass, methods=["POST"])
 def register():
     form = RegisterForm()
     now = datetime.now(timezone.utc).replace(microsecond=0)
     if form.validate_on_submit():
+
+        # CAPTCHA VERIFICATION
+        if app.config["CAPTCHA_ENABLED"] and session.get("captcha_required"):
+            token = request.form.get("h-captcha-response")
+            if not verify_hcaptcha(token, get_remote_address()):
+                flash("CAPTCHA verification failed. Please try again.", "danger")
+                return render_template("register.html", form=form, captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"])
+            session.pop("captcha_required", None)
+            
         email = form.email.data.lower().strip()
 
         # --- 1. BAN CHECK (Industry Standard Enforcement) ---
@@ -1485,6 +1550,7 @@ def request_reset_post():
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
+@limiter.limit("20 per hour", key_func=hybrid_rate_limit_key, methods=["POST"])
 def reset_password(token):
     data = confirm_password_reset_token(token)
     if not data:
@@ -1587,7 +1653,7 @@ def login_post():
 
     return redirect(next_page)
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
@@ -1614,9 +1680,12 @@ def build_search_query(args):
     f_month = args.get("month", "")
     f_day = args.get("day", "")
 
+    # Get the tab parameter
+    tab = args.get("tab", "published")
+
     active_filters = [query, sort_order, scope, f_year, f_month, f_day]
     if not any(f for f in active_filters if f):
-        return None, None, None
+        return None, None, None, None
 
     stmt = db.select(BlogPost).join(User)
     msg_parts = []
@@ -1634,6 +1703,16 @@ def build_search_query(args):
                 stmt = stmt.where(BlogPost.author_id == target_user.id)
                 msg_parts.append(f"in @{target_user.username}'s posts")
                 profile_user = target_user
+
+    # DYNAMIC SECURITY FILTER
+    active_tab = "published"
+    # If the user is searching THEIR OWN profile AND they selected the drafts tab:
+    if profile_user and current_user.is_authenticated and current_user.id == profile_user.id and tab == "drafts":
+        stmt = stmt.where(BlogPost.is_published == False)
+        active_tab = "drafts"
+    else:
+        # Otherwise, strictly lock it to published posts only
+        stmt = stmt.where(BlogPost.is_published == True)
 
     # Apply Date
     if f_year:
@@ -1684,11 +1763,11 @@ def build_search_query(args):
         stmt = stmt.order_by(BlogPost.date.desc())
 
     search_message = "Found results " + " ".join(msg_parts) if msg_parts else "All Posts"
-    return stmt, profile_user, search_message
+    return stmt, profile_user, search_message, active_tab
 
 @app.route("/search")
 def search():
-    stmt, profile_user, search_message = build_search_query(request.args)
+    stmt, profile_user, search_message, active_tab = build_search_query(request.args)
     
     if stmt is None:
         return redirect(url_for("get_all_posts"))
@@ -1713,7 +1792,8 @@ def search():
             has_next=pagination.has_next, 
             next_page=pagination.next_num,
             search_message=search_message,
-            can_message=can_message
+            can_message=can_message,
+            active_tab=active_tab
         )
     else:
         return render_template(
@@ -1726,8 +1806,9 @@ def search():
 
 # --- NEW API ROUTE (Search Infinite Scroll) ---
 @app.route("/search/load")
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def load_search_posts():
-    stmt, _, _ = build_search_query(request.args)
+    stmt, _, _, _ = build_search_query(request.args)
     if stmt is None:
         return "", 404
         
@@ -1739,6 +1820,7 @@ def load_search_posts():
     return render_template("_post_list.html", posts=pagination.items)
 
 @app.route("/settings", methods=["GET", "POST"])
+@limiter.limit("30 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 @login_required
 def settings():
     form = SettingsForm()
@@ -1784,7 +1866,7 @@ def get_all_posts():
     per_page = 9
     
     # Efficient Pagination Query
-    stmt = db.select(BlogPost).order_by(BlogPost.date.desc())
+    stmt = db.select(BlogPost).where(BlogPost.is_published == True).order_by(BlogPost.date.desc())
     pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     
     # Render index.html with the first batch of items
@@ -1795,6 +1877,9 @@ def get_all_posts():
 
 # --- NEW API ROUTE (INFINITE SCROLL) ---
 @app.route("/posts/load")
+# Permissive for fast scrolling: 120 requests per minute total, 
+# but no more than 5 in any single second.
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def load_posts():
     """
     API endpoint called by JavaScript to fetch the next page of posts.
@@ -1803,7 +1888,7 @@ def load_posts():
     page = request.args.get('page', 1, type=int)
     per_page = 9
     
-    stmt = db.select(BlogPost).order_by(BlogPost.date.desc())
+    stmt = db.select(BlogPost).where(BlogPost.is_published == True).order_by(BlogPost.date.desc())
     pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     
     # Return JUST the list of cards
@@ -1819,9 +1904,19 @@ def user_profile(username):
     # Pagination Logic
     page = request.args.get('page', 1, type=int)
     per_page = 9
+
+    # --- NEW: Tab Selection & Security ---
+    tab = request.args.get('tab', 'published')
+    is_published_filter = True
     
-    # Filter by Author
-    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id).order_by(BlogPost.date.desc())
+    # Only allow 'drafts' filter if the logged-in user is looking at their own profile
+    if tab == 'drafts' and current_user.is_authenticated and current_user.id == user.id:
+        is_published_filter = False
+    
+    # Filter by Author and Apply the dynamic filter
+    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id,
+                                     BlogPost.is_published == is_published_filter
+                                     ).order_by(BlogPost.date.desc())
     pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     
     can_message = False
@@ -1835,10 +1930,12 @@ def user_profile(username):
                            posts=pagination.items, 
                            has_next=pagination.has_next, 
                            next_page=pagination.next_num,
-                           can_message=can_message)
+                           can_message=can_message,
+                           active_tab=tab)
 
 # --- NEW API ROUTE (Profile Infinite Scroll) ---
 @app.route("/user/<string:username>/load")
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def load_user_posts(username):
     user = db.session.scalar(db.select(User).where(User.username == username))
     if not user:
@@ -1846,8 +1943,15 @@ def load_user_posts(username):
         
     page = request.args.get('page', 1, type=int)
     per_page = 9
+
+    tab = request.args.get('tab', 'published')
+    is_published_filter = True
+    if tab == 'drafts' and current_user.is_authenticated and current_user.id == user.id:
+        is_published_filter = False
     
-    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id).order_by(BlogPost.date.desc())
+    stmt = db.select(BlogPost).where(BlogPost.author_id == user.id,
+                                     BlogPost.is_published == is_published_filter
+                                     ).order_by(BlogPost.date.desc())
     pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     
     # Reuse the same partial template!
@@ -1855,6 +1959,7 @@ def load_user_posts(username):
 
 @app.route("/like/<int:post_id>", methods=["POST"])
 @login_required
+@limiter.limit("120 per minute", key_func=hybrid_rate_limit_key)
 def like_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     
@@ -1899,12 +2004,20 @@ def like_post(post_id):
     }
 
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
+@limiter.limit("40 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 def show_post(post_id):
     post = db.session.get(BlogPost, post_id)
     
     if not post:
         flash("That post has been deleted or does not exist.", "info")
         return redirect(url_for("get_all_posts"))
+    
+    # If it's a draft, hide it from everyone except the author
+    if not post.is_published:
+        if not current_user.is_authenticated or current_user.id != post.author_id:
+            # We use the exact same error message so hackers can't even tell a draft exists
+            flash("That post has been deleted or does not exist.", "info")
+            return redirect(url_for("get_all_posts"))
     
     # --- SMART READ: Mark Activity as Read ---
     # If a user views this post, clear any pending notifications about it.
@@ -2083,6 +2196,7 @@ def show_post(post_id):
     return render_template("post.html", post=post, form=form, comments_pagination=pagination)
 
 @app.route("/post/<int:post_id>/load-comments")
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def load_more_comments(post_id):
     post = db.get_or_404(BlogPost, post_id)
     page = request.args.get('page', 1, type=int)
@@ -2103,6 +2217,7 @@ def load_more_comments(post_id):
 # ==============================================================================
 @app.route("/upload-image", methods=["POST"])
 @login_required
+@limiter.limit("20 per minute", key_func=hybrid_rate_limit_key)
 def upload_image():
     """
     Background API endpoint specifically for TinyMCE editor.
@@ -2128,6 +2243,7 @@ def upload_image():
 
 @app.route("/new-post", methods=["GET", "POST"])
 @login_required 
+@limiter.limit("5 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 def add_new_post():
     form = CreatePostForm()
 
@@ -2191,9 +2307,13 @@ def add_new_post():
         
         # C. VALIDATION FAILURE (Neither provided)
         else:
-            flash("You must provide an image! Please upload a file or paste a URL.", "danger")
+            flash("You must provide a cover image! Please upload a file or paste a URL.", "danger")
             # Stop here and re-render the form
             return render_template("make-post.html", form=form)
+        
+        # Grab the action from the clicked button
+        action = request.form.get("action")
+        is_published = True if action == "publish" else False
 
         # 2. SAVE POST (Database Transaction)
         # We isolate the DB save so we know exactly when the post is safe.
@@ -2205,7 +2325,8 @@ def add_new_post():
                     body=clean_html(form.body.data),
                     img_url=final_img_url,
                     author=current_user,
-                    can_comment=form.can_comment.data
+                    can_comment=form.can_comment.data,
+                    is_published=is_published
                 )
                 db.session.add(post)
                 # Flush ensures post.id is available
@@ -2222,48 +2343,116 @@ def add_new_post():
             flash("Failed to create post. Please try again.", "danger")
             return render_template("make-post.html", form=form)
 
-        # 3. NOTIFICATIONS (Web Push & Digest Log)
-        # Wrapped in a separate try/except block.
-        # If this fails, the post is still saved, so we do NOT show an error to the user.
-        try:
-            subscribers = db.session.scalars(db.select(User).where(User.notify_new_post == True)).all()
+        
+        # Success Logic for Animation & Scroll 
+        if is_published:
             
-            if subscribers:
-                post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+            # 3. NOTIFICATIONS (Web Push & Digest Log)
+            # Wrapped in a separate try/except block.
+            # If this fails, the post is still saved, so we do NOT show an error to the user.
+            try:
+                subscribers = db.session.scalars(db.select(User).where(User.notify_new_post == True)).all()
                 
-                for sub in subscribers:
-                    if sub.id != current_user.id:
-                        # 1. Push
-                        socketio.start_background_task(
-                            send_notification_async,
-                            sub.id,
-                            f"New Post: {post.title}",
-                            f"{current_user.name} published a new story.", # Plain text for Web Push
-                            post_url,
-                            "post",
-                            related_post_id=post.id,
-                            icon_url=get_gravatar_url(current_user.email),
-                            image_url=post.img_url,
-                            badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
-                            sender_id=current_user.id
-                        )
-        except Exception as e:
-            # Log the error internally but allow the request to succeed
-            logger.error(f"Notification Error for post {post.id}: {e}")
-
-        # --- UPDATE: Success Logic for Animation & Scroll ---
-        
-        # 1. Flash 'success' category triggers the JS animation in index.html
-        flash("New post published successfully!", "success")
-        
-        # 2. Add _anchor to scroll to the specific post ID
-        return redirect(url_for("get_all_posts", _anchor=f"post-{post.id}"))
+                if subscribers:
+                    post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+                    
+                    for sub in subscribers:
+                        if sub.id != current_user.id:
+                            # 1. Push
+                            socketio.start_background_task(
+                                send_notification_async,
+                                sub.id,
+                                f"New Post: {post.title}",
+                                f"{current_user.name} published a new story.", # Plain text for Web Push
+                                post_url,
+                                "post",
+                                related_post_id=post.id,
+                                icon_url=get_gravatar_url(current_user.email),
+                                image_url=post.img_url,
+                                badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                                sender_id=current_user.id
+                            )
+            except Exception as e:
+                # Log the error internally but allow the request to succeed
+                logger.error(f"Notification Error for post {post.id}: {e}")
+            flash("New post published successfully!", "success")
+            return redirect(url_for("get_all_posts", _anchor=f"post-{post.id}"))
+        else:
+            flash("Draft saved! You can access it anytime from the 'Drafts' tab on your Profile.", "success")
+            # Redirect to the edit page so they can continue writing
+            return redirect(url_for("edit_post", post_id=post.id))
         
     return render_template("make-post.html", form=form)
 
+# @app.route("/api/save-draft", methods=["POST"])
+# @login_required
+# @limiter.limit("30 per minute", key_func=hybrid_rate_limit_key)
+# def save_draft_api():
+#     """Silent backend route to save a draft via AJAX."""
+#     data = request.get_json()
+#     if not data:
+#         return jsonify({"error": "No data provided"}), 400
+
+#     post_id = data.get("post_id")
+#     title = data.get("title", "").strip()
+    
+#     # We must have a title to save to the database securely
+#     if not title:
+#         return jsonify({"error": "A title is required to save a draft."}), 400
+
+#     # Fallbacks to prevent Database crashes
+#     subtitle = data.get("subtitle", "").strip() or "Draft..."
+#     body = data.get("body", "").strip() or "<p>Draft...</p>"
+#     img_url = data.get("img_url", "").strip() or "https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1200&q=80"
+#     can_comment = data.get("can_comment", True)
+
+#     try:
+#         with safe_commit():
+#             if post_id:
+#                 post = db.session.get(BlogPost, post_id)
+#                 if not post:
+#                     return jsonify({"error": "Draft not found."}), 404
+#                 if post.author_id != current_user.id:
+#                     return jsonify({"error": "Unauthorized"}), 403
+                    
+#                 post.title = title
+#                 post.subtitle = subtitle
+#                 post.body = body
+#                 post.can_comment = can_comment
+#                 if data.get("img_url"):
+#                     post.img_url = data.get("img_url")
+#                 post.is_published = False
+
+#             else:
+#                 post = BlogPost(
+#                     title=title,
+#                     subtitle=subtitle,
+#                     body=body,
+#                     img_url=img_url,
+#                     author=current_user,
+#                     is_published=False,
+#                     can_comment=can_comment 
+#                 )
+#                 db.session.add(post)
+#                 db.session.flush() 
+#                 post_id = post.id
+        
+#         return jsonify({
+#             "success": True, 
+#             "post_id": post_id, 
+#             "timestamp": datetime.now(timezone.utc).isoformat()
+#         })
+        
+#     except IntegrityError:
+#         return jsonify({"error": "A post with this title already exists."}), 400
+#     except Exception as e:
+#         logger.error(f"Draft save failed: {e}")
+#         return jsonify({"error": "Server error"}), 500
+
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
 @login_required 
+@limiter.limit("10 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     
@@ -2328,6 +2517,10 @@ def edit_post(post_id):
             new_cloud_url = uploaded_url
             is_new_upload = True
 
+        # Grab the action from the clicked button
+        action = request.form.get("action")
+        is_published = True if action == "publish" else False
+
         # 2. SAVE CHANGES (Database Transaction)
         try:
             old_img_url = post.img_url
@@ -2335,6 +2528,7 @@ def edit_post(post_id):
             with safe_commit():
                 form.populate_obj(post)
                 post.body = clean_html(form.body.data)
+                post.is_published = is_published
                 # Handle Image Update
                 # Only update if a NEW file is uploaded or a NEW url is provided
 
@@ -2356,55 +2550,77 @@ def edit_post(post_id):
             flash("Failed to update post.", "danger")
             return render_template("make-post.html", form=form, is_edit=True)
             
-        # 3. NOTIFICATIONS (Web Push & Digest Log)
-        try:
-            subscribers = db.session.scalars(db.select(User).where(User.notify_post_edit == True)).all()
-            
-            if subscribers:
-                post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+
+        if is_published:
+            # 3. NOTIFICATIONS (Web Push & Digest Log)
+            try:
+                subscribers = db.session.scalars(db.select(User).where(User.notify_post_edit == True)).all()
                 
-                for sub in subscribers:
-                    if sub.id != current_user.id:
-                        # 1. Push
-                        socketio.start_background_task(
-                            send_notification_async,
-                            sub.id,
-                            f"Update: {post.title}",
-                            f"{current_user.name} updated this post.",
-                            post_url,
-                            "edit",
-                            related_post_id=post.id,
-                            icon_url=get_gravatar_url(current_user.email),
-                            image_url=post.img_url,
-                            badge_url=url_for('static', filename='assets/badge.png', _external=True),
-                            favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
-                            sender_id=current_user.id
-                        )
-        except Exception as e:
-            logger.error(f"Notification Error for post {post.id}: {e}")
-
-        flash("Updated post successfully!", "success")
-        return redirect(url_for("show_post", post_id=post.id))
+                if subscribers:
+                    post_url = url_for('show_post', post_id=post.id, _anchor='post-content', _external=True)
+                    
+                    for sub in subscribers:
+                        if sub.id != current_user.id:
+                            # 1. Push
+                            socketio.start_background_task(
+                                send_notification_async,
+                                sub.id,
+                                f"Update: {post.title}",
+                                f"{current_user.name} updated this post.",
+                                post_url,
+                                "edit",
+                                related_post_id=post.id,
+                                icon_url=get_gravatar_url(current_user.email),
+                                image_url=post.img_url,
+                                badge_url=url_for('static', filename='assets/badge.png', _external=True),
+                                favicon_url=url_for('static', filename='assets/favicon.ico', _external=True),
+                                sender_id=current_user.id
+                            )
+            except Exception as e:
+                logger.error(f"Notification Error for post {post.id}: {e}")
+            flash("Updated post successfully!", "success")
+            return redirect(url_for("show_post", post_id=post.id))
+        else:
+            flash("Draft updated! You can find all your drafts on your Profile.", "success")
+            # Redirect back to the same edit page so they can continue writing
+            return redirect(url_for("edit_post", post_id=post.id))
         
-    return render_template("make-post.html", form=form, is_edit=True)
+    return render_template("make-post.html", form=form, is_edit=True, post_id=post.id, is_published=post.is_published)
 
-@app.route("/delete/<int:post_id>", methods=["POST", "GET"])
+@app.route("/delete/<int:post_id>", methods=["POST"])
+@limiter.limit("30 per minute", key_func=hybrid_rate_limit_key)
 @login_required 
 def delete_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     target_username = post.author.username
     if current_user.id == post.author_id:
+        # CAPTURE STATE (Before Deletion)
+        # because the 'post' object will be destroyed in a moment
+        was_published = post.is_published
         try:
             img_to_delete = post.img_url
             with safe_commit():
                 db.session.delete(post)
             socketio.start_background_task(delete_picture, img_to_delete)
-            flash("Post deleted.", "info")
+            # DYNAMIC FLASH MESSAGE
+            if was_published:
+                flash("Post deleted.", "info")
+            else:
+                flash("Draft deleted.", "info")
         except Exception as e:
             # safe_commit logs the specific DB error, but we log context here too
             logger.error(f"User {current_user.id} failed to delete post {post.id}: {e}")
-            flash("There was an issue deleting the post. Please try again.", "danger")
-        return redirect(url_for("user_profile", username=target_username))
+            
+            # DYNAMIC ERROR MESSAGE
+            item_type = "post" if was_published else "draft"
+            flash(f"There was an issue deleting the {item_type}. Please try again.", "danger")
+            
+        # DYNAMIC REDIRECT
+        if was_published:
+            return redirect(url_for("user_profile", username=target_username))
+        else:
+            # Drop right back into the Drafts tab!
+            return redirect(url_for("user_profile", username=target_username, tab="drafts"))
     elif current_user.role == "admin":
         return redirect(url_for("admin_delete_post", post_id=post.id))
     else:
@@ -2547,6 +2763,7 @@ def warn_post_author(post_id):
     return render_template("admin_warn_author.html", form=form, post=post, page_title="Warn User")
 
 @app.route("/delete-comment/<int:comment_id>", methods=["POST"])
+@limiter.limit("30 per minute", key_func=hybrid_rate_limit_key)
 @login_required
 def delete_comment(comment_id):
     comment_to_delete = db.get_or_404(Comment, comment_id)
@@ -2566,6 +2783,7 @@ def delete_comment(comment_id):
         return redirect(url_for('show_post', post_id=post_id, _anchor='comment-form-section'))
 
 @app.route("/contact", methods=["GET", "POST"])
+@limiter.limit("120 per hour", key_func=hybrid_rate_limit_key, methods=["POST"])
 def contact():
     form = ContactForm()
     if form.validate_on_submit():
@@ -2638,6 +2856,7 @@ def inject_global_vars():
     return vars
 
 @app.route("/subscribe", methods=["POST"])
+@limiter.limit("15 per hour", key_func=hybrid_rate_limit_key)
 def subscribe():
     if not current_user.is_authenticated:
         return jsonify({"error": "unauthorized"}), 401
@@ -2695,6 +2914,7 @@ def inbox():
 
 @app.route("/api/block/<int:user_id>", methods=["POST"])
 @login_required
+@limiter.limit("30 per minute", key_func=hybrid_rate_limit_key)
 def toggle_block_user(user_id):
     if user_id == current_user.id:
         return jsonify({"error": "You cannot block yourself"}), 400
@@ -2720,6 +2940,7 @@ def toggle_block_user(user_id):
         return jsonify({"error": "Server error"}), 500
 
 @app.route('/chat/<int:user_id>', methods=['GET', 'POST'])
+@limiter.limit("60 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 @login_required
 def chat(user_id):
     recipient = db.session.get(User, user_id)
@@ -2783,6 +3004,7 @@ def chat(user_id):
 # --- NEW ROUTE: Infinite Scroll API ---
 @app.route('/api/chat/<int:user_id>/history')
 @login_required
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def get_chat_history(user_id):
     # Get 'page' from URL (e.g., ?page=2), default to 1
     page = request.args.get('page', 1, type=int)
@@ -2817,6 +3039,7 @@ def get_chat_history(user_id):
 
 @app.route('/api/message/<int:message_id>/delete', methods=['POST'])
 @login_required
+@limiter.limit("60 per minute", key_func=hybrid_rate_limit_key)
 def delete_message_api(message_id):
     msg = db.session.get(Message, message_id)
     if not msg:
@@ -2880,6 +3103,7 @@ def delete_message_api(message_id):
 
 # 1. USER SELF-DELETE (Does NOT Ban email)
 @app.route("/delete-account", methods=["POST"])
+@limiter.limit("10 per minute", key_func=hybrid_rate_limit_key)
 @login_required
 def delete_account():
     form = DeleteAccountForm()
@@ -3166,6 +3390,7 @@ def notifications():
 
 @app.route('/notifications/load')
 @login_required
+@limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def load_notifications():
     per_page = 15
     before_ts_str = request.args.get('before', type=str)
@@ -3196,6 +3421,7 @@ def load_notifications():
 
 @app.route('/api/notifications/read-all', methods=['POST'])
 @login_required
+@limiter.limit("30 per minute", key_func=hybrid_rate_limit_key)
 def read_all_notifications():
     try:
         with safe_commit():
