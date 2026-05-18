@@ -148,7 +148,16 @@
             </a>
           </li>
 
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('logout') }}">LogOut</a></li>
+          <li class="nav-item ms-lg-3 d-flex align-items-center">
+            <form action="{{ url_for('logout') }}" method="POST" class="m-0 p-0 w-100">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              
+              <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1 fw-bold w-100 text-start text-lg-center">
+                <i class="bi bi-box-arrow-right me-1"></i> Logout
+              </button>
+              
+            </form>
+          </li>
           <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
           {% endif %}
         </ul>
@@ -188,6 +197,12 @@
             {# Output the Hidden Input #}
             {% if target_scope %}
                 <input type="hidden" name="scope" value="{{ target_scope }}">
+            {% endif %}
+
+            {# Preserve Tab Context #}
+            {% set current_tab = active_tab if active_tab else request.args.get('tab') %}
+            {% if current_tab %}
+                <input type="hidden" name="tab" value="{{ current_tab }}">
             {% endif %}
   
             <div class="input-group modern-search-group">
@@ -255,9 +270,10 @@
                       
                       {# --- LOGIC FIX: CLEAR ALL BUTTON --- #}
                       {% if user %}
-                          <a href="{{ url_for('user_profile', username=user.username) }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
+                          {% set clear_tab = active_tab if active_tab else request.args.get('tab', 'published') %}
+                          <a href="{{ url_for('user_profile', username=user.username, tab=clear_tab) }}" class="btn btn-outline-danger btn-sm w-100 clear-search-btn">Clear All</a>
                       {% else %}
-                          <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-danger btn-sm w-100">Clear All</a>
+                          <a href="{{ url_for('get_all_posts') }}" class="btn btn-outline-danger btn-sm w-100 clear-search-btn">Clear All</a>
                       {% endif %}
                   </li>
               </ul>
