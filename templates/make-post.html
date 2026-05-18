@@ -254,11 +254,73 @@
               Cancel
             </a>
 
-            {% if is_edit %} {{ form.submit(class="btn btn-primary rounded-pill
+            {% if not is_edit or (is_edit and not is_published) %}
+            <button 
+                type="button" 
+                class="btn {% if is_edit %}btn-success{% else %}btn-secondary{% endif %} rounded-pill px-4 shadow-sm fw-bold me-2" 
+                id="draftBtn"
+                {% if is_edit %}disabled style="opacity: 1; cursor: default;"{% endif %}>
+                <i class="bi {% if is_edit %}bi-check-circle{% else %}bi-cloud-arrow-down{% endif %} me-1" id="draftIcon"></i> 
+                <span id="draftText">{% if is_edit %}Saved{% else %}Save Draft{% endif %}</span>
+            </button>
+            {% endif %}
+
+            <button 
+                type="button" 
+                class="btn {% if is_edit and is_published %}btn-primary{% else %}btn-success{% endif %} rounded-pill px-5 shadow-sm fw-bold" 
+                id="submitBtn">
+                {% if is_edit and is_published %}Update Post{% else %}Publish Post{% endif %}
+            </button>
+
+            <!-- Dual Action Buttons -->
+            <!-- Only show the Draft button if this is a NEW post, OR an EXISTING post that is currently a draft -->
+            {#{% if not is_edit or (is_edit and not is_published) %}
+            <button 
+                type="submit" 
+                name="action" 
+                value="draft"
+                class="btn {% if is_edit %}btn-success{% else %}btn-secondary{% endif %} rounded-pill px-4 shadow-sm fw-bold me-2" 
+                id="draftBtn"
+                {% if is_edit %}disabled style="opacity: 1; cursor: default;"{% endif %}>
+                <i class="bi {% if is_edit %}bi-check-circle{% else %}bi-cloud-arrow-down{% endif %} me-1" id="draftIcon"></i> 
+                <span id="draftText">{% if is_edit %}Saved{% else %}Save Draft{% endif %}</span>
+            </button>
+            {% endif %}
+
+            <button 
+                type="submit" 
+                name="action" 
+                value="publish" 
+                class="btn {% if is_edit %}btn-primary{% else %}btn-success{% endif %} rounded-pill px-5 shadow-sm fw-bold" 
+                id="submitBtn">
+                {% if is_edit %}Update Post{% else %}Publish Post{% endif %}
+            </button>#}
+
+           {#<!-- Dual Action Buttons -->
+            <button 
+                type="submit" 
+                name="action" 
+                value="draft" 
+                class="btn btn-secondary rounded-pill px-4 shadow-sm fw-bold me-2" 
+                id="draftBtn">
+                <i class="bi bi-cloud-arrow-down me-1"></i> Save Draft
+            </button>
+
+            <button 
+                type="submit" 
+                name="action" 
+                value="publish" 
+                class="btn {% if is_edit %}btn-primary{% else %}btn-success{% endif %} rounded-pill px-5 shadow-sm fw-bold" 
+                id="submitBtn">
+                {% if is_edit %}Update Post{% else %}Publish Post{% endif %}
+            </button>
+          </div>#}
+
+            {#{% if is_edit %} {{ form.submit(class="btn btn-primary rounded-pill
             px-5 shadow-sm fw-bold", value="Update Post", id="submitBtn") }} {%
             else %} {{ form.submit(class="btn btn-success rounded-pill px-5
             shadow-sm fw-bold", value="Publish Post", id="submitBtn") }} {%
-            endif %}
+            endif %}#}
           </div>
         </form>
       </div>
@@ -350,7 +412,13 @@
             const errJson = JSON.parse(xhr.responseText);
             if (errJson.error) errorMsg = errJson.error;
           } catch(e) {}
-          reject(errorMsg);
+          // 1. Show our sleek Global Toast Notification
+          if (window.showAppToast) {
+              window.showAppToast(errorMsg, "danger");
+          }
+
+          // 2. Reject with `remove: true` so TinyMCE deletes the broken image placeholder
+          reject({ message: errorMsg, remove: true });
           return;
         }
 
@@ -597,6 +665,96 @@
         localStorage.setItem("feed_needs_refresh", "true");
       });
     });
+
+    // --- ELEMENT REFERENCES ---
+    const postForm = document.getElementById("postForm");
+    const draftBtn = document.getElementById("draftBtn");
+    const draftIcon = document.getElementById("draftIcon");
+    const draftText = document.getElementById("draftText");
+
+    // --- CUSTOM FORM SUBMISSION ENGINE ---
+    // Bypasses global base.html script to ensure TinyMCE syncs and spinners fire reliably
+    function submitPostForm(actionValue, clickedBtn) {
+        // 1. Force TinyMCE to sync its content to the hidden textarea
+        if (typeof tinymce !== 'undefined') {
+            tinymce.triggerSave();
+        }
+
+        // 2. Lock button widths to prevent shrinking
+        const originalWidth = clickedBtn.offsetWidth;
+        clickedBtn.style.width = originalWidth + "px";
+
+        // 3. Disable all buttons to prevent double-submission
+        if (draftBtn) draftBtn.disabled = true;
+        if (submitBtn) submitBtn.disabled = true;
+
+        // 4. Inject beautiful Bootstrap spinner and update text
+        let loadingText = actionValue === 'draft' ? 'Saving...' : 'Publishing...';
+        if (clickedBtn.innerText.includes('Update')) loadingText = 'Updating...';
+
+        clickedBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${loadingText}`;
+
+        // 5. Inject hidden input so Flask knows exactly what action we clicked
+        const hiddenInput = document.createElement("input");
+        hiddenInput.type = "hidden";
+        hiddenInput.name = "action";
+        hiddenInput.value = actionValue;
+        postForm.appendChild(hiddenInput);
+
+        // 6. Submit the form natively
+        postForm.submit();
+    }
+
+    // Attach the custom engine to our buttons
+    if (draftBtn) {
+        draftBtn.addEventListener("click", function() {
+            submitPostForm("draft", this);
+        });
+    }
+
+    if (submitBtn) {
+        submitBtn.addEventListener("click", function() {
+            submitPostForm("publish", this);
+        });
+    }
+
+    // --- DRAFT BUTTON STATE MANAGER ---
+    if (draftBtn) {
+        function wakeUpDraftButton() {
+            // Only trigger if the button is currently in the "Saved" (disabled) state
+            if (draftBtn.disabled) {
+                // 1. Reactivate the button
+                draftBtn.disabled = false;
+                draftBtn.style.cursor = "pointer";
+                
+                // 2. Swap classes (Green to Grey)
+                draftBtn.classList.remove("btn-success");
+                draftBtn.classList.add("btn-secondary");
+                
+                // 3. Swap Icon and Text back to "Save Draft"
+                if (draftIcon) {
+                    draftIcon.classList.remove("bi-check-circle");
+                    draftIcon.classList.add("bi-cloud-arrow-down");
+                }
+                if (draftText) draftText.innerText = "Save Draft";
+            }
+        }
+
+        // Listen to all standard inputs (Title, Subtitle, File Upload URL, Checkbox)
+        const inputs = document.querySelectorAll("#title, #subtitle, #hybrid_input, #hidden_file_input, #can_comment");
+        inputs.forEach(input => {
+            input.addEventListener("input", wakeUpDraftButton);
+            input.addEventListener("change", wakeUpDraftButton);
+        });
+
+        // Listen to the TinyMCE Text Editor
+        // We wait 1 second to ensure TinyMCE is fully loaded before attaching the listener
+        setTimeout(() => {
+            if (typeof tinymce !== 'undefined' && tinymce.get("body")) {
+                tinymce.get("body").on("input keyup change NodeChange", wakeUpDraftButton);
+            }
+        }, 1000);
+    }
   });
 </script>
 {% endblock %}
