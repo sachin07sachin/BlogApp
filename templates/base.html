@@ -247,23 +247,59 @@
         }
 
         // ==========================================
-        // 3. UNIVERSAL API FETCH (The Fix)
+      // GLOBAL TOAST NOTIFICATIONS
+      // ==========================================
+      window.showAppToast = function(message, category = "warning") {
+          // 1. Create the container if it doesn't exist yet
+          let toastContainer = document.getElementById('app-toast-container');
+          if (!toastContainer) {
+              toastContainer = document.createElement('div');
+              toastContainer.id = 'app-toast-container';
+              toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+              toastContainer.style.zIndex = '1100';
+              document.body.appendChild(toastContainer);
+          }
+
+          // 2. Build the Toast HTML
+          const toastId = 'toast-' + Date.now();
+          const toastHtml = `
+              <div id="${toastId}" class="toast align-items-center text-bg-${category} border-0 mb-2 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+                  <div class="d-flex">
+                      <div class="toast-body fw-bold">
+                          <i class="bi bi-exclamation-circle me-2"></i> ${message}
+                      </div>
+                      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                  </div>
+              </div>
+          `;
+          
+          // 3. Add to screen and initialize Bootstrap JS
+          toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+          const toastEl = document.getElementById(toastId);
+          const bsToast = new bootstrap.Toast(toastEl, { delay: 4000 }); // Auto-hides after 4 seconds
+          bsToast.show();
+
+          // 4. Clean up the DOM when it fades out
+          toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+      };
+
+        // ==========================================
+        // 3. UNIVERSAL API FETCH
         // ==========================================
         /**
          * Handles CSRF tokens and Session Expiration automatically.
          * If session is dead, it redirects the browser to login.
          */
-        async function apiFetch(url, options = {}) {
+         async function apiFetch(url, options = {}) {
           // 1. Default Headers (JSON + CSRF + AJAX Flag)
           const headers = {
               "Content-Type": "application/json",
-              "Accept": "application/json", // Critical: Tells server to send JSON error, not HTML
-              "X-CSRFToken": "{{ csrf_token() }}", // Flask-WTF token
-              "X-Requested-With": "XMLHttpRequest", // Critical: Marks this as AJAX for server
-              ...options.headers, // Merge custom headers
+              "Accept": "application/json", 
+              "X-CSRFToken": "{{ csrf_token() }}", 
+              "X-Requested-With": "XMLHttpRequest", 
+              ...options.headers, 
           };
 
-          // Helper to build the perfect redirect URL with Hash support
           const getLoginUrl = () => {
               const currentPath = window.location.pathname + window.location.search + window.location.hash;
               return "{{ url_for('login_get') }}?mode=session_expired&next=" + encodeURIComponent(currentPath);
@@ -272,29 +308,39 @@
           try {
               const response = await fetch(url, { ...options, headers });
 
-              // 2. DETECT SESSION EXPIRY (Server returned 401 JSON)
-              // This works with the updated handle_csrf_error in main.py
+              // 2. DETECT SESSION EXPIRY (401)
               if (response.status === 401) {
-                const clone = response.clone();
-                try {
-                    const data = await clone.json();
-                    if (data.error === "session_expired") {
-                        console.warn("Session expired. Redirecting to login...");
-                        // FIX: Use Client-side logic to preserve the Hash (#)
-                        window.location.href = getLoginUrl();
-                        return null;
-                    }
-                } catch (e) {
-                    // Not JSON, ignore
-                }
-            }
+                  const clone = response.clone();
+                  try {
+                      const data = await clone.json();
+                      if (data.error === "session_expired") {
+                          console.warn("Session expired. Redirecting to login...");
+                          window.location.href = getLoginUrl();
+                          return null;
+                      }
+                  } catch (e) {}
+              }
 
-              // 3. DETECT HTML REDIRECT (Fallback)
-              // If the server forced a redirect to login page (status 200 but URL changed)
+              // 3. DETECT RATE LIMITS (429)
+              if (response.status === 429) {
+                  const contentType = response.headers.get("content-type");
+                  // If the backend sent JSON (Buttons, Likes, Blocks)
+                  if (contentType && contentType.includes("application/json")) {
+                      const data = await response.json();
+                      
+                      // USE THE NEW TOAST INSTEAD OF ALERT
+                      window.showAppToast(data.error || "You are moving too fast. Please wait a moment.", "danger");
+                      
+                      return null; // Stop execution so the button doesn't crash
+                  }
+                  // If the backend sent HTML (Infinite Scroll), let it pass through normally!
+              }
+
+              // 4. DETECT HTML REDIRECT (Fallback)
               if (response.redirected && response.url.includes("/login")) {
-                window.location.href = getLoginUrl();
-                return null;
-            }
+                  window.location.href = getLoginUrl();
+                  return null;
+              }
 
               return response;
           } catch (error) {
@@ -413,6 +459,36 @@
 
             // 3. Validation Check: Let HTML5 validation stop us first
             if (!form.checkValidity()) return;
+
+            // PREVENT SUBMIT IF CAPTCHA IS UNSOLVED
+            // Check if the hCaptcha widget exists on this specific form
+            const captchaContainer = form.querySelector('.h-captcha');
+            if (captchaContainer) {
+                const captchaInput = form.querySelector('[name="h-captcha-response"]');
+                
+                if (!captchaInput || captchaInput.value.trim() === "") {
+                    e.preventDefault();     // Stop the form
+                    e.stopPropagation();    // Stop any other scripts from forcing it
+                    
+                    // Remove old alert if they click multiple times
+                    const oldAlert = form.querySelector('.client-captcha-alert');
+                    if (oldAlert) oldAlert.remove();
+
+                    // Inject a beautiful Bootstrap alert right above the CAPTCHA box
+                    const alertHtml = `
+                        <div class="alert alert-warning alert-dismissible fade show client-captcha-alert shadow-sm" role="alert">
+                            <i class="bi bi-shield-exclamation me-1"></i> Please complete the CAPTCHA to verify you are human.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    captchaContainer.insertAdjacentHTML('beforebegin', alertHtml);
+                    
+                    // Smooth scroll to the new alert
+                    captchaContainer.previousElementSibling.scrollIntoView({ behavior: "smooth", block: "center" });
+                    
+                    return;                 // Exit out, keeping the button active
+                }
+            }
 
             // 4. Find the submit button(s)
             const submitBtns = form.querySelectorAll(

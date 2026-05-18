@@ -334,11 +334,48 @@
       </div>
       {% endif %}
 
+      <!-- Private Tabs for the Author -->
+      {% if current_user.is_authenticated and current_user.id == user.id and
+      (not search_message or search_message == "All Posts") %}
+      <ul class="nav nav-pills mb-4 border-bottom pb-3" id="profileTabs">
+        <li class="nav-item">
+          <a
+            class="nav-link {% if active_tab != 'drafts' %}active{% endif %} rounded-pill px-4"
+            href="{{ url_for('user_profile', username=user.username, tab='published') }}"
+          >
+            <i class="bi bi-journal-check me-2"></i>My Posts
+          </a>
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link {% if active_tab == 'drafts' %}active bg-secondary{% endif %} rounded-pill px-4 ms-2"
+            href="{{ url_for('user_profile', username=user.username, tab='drafts') }}"
+          >
+            <i class="bi bi-lock-fill me-2"></i>Drafts
+          </a>
+        </li>
+      </ul>
+      {% endif %} {% if search_message and search_message != "All Posts" %}
+      <div
+        class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4"
+        id="results-anchor"
+      >
+        <h5 class="fw-bold mb-0">
+          <i class="bi bi-search me-2"></i>Search Results
+        </h5>
+        <a
+          href="{{ url_for('user_profile', username=user.username, tab=active_tab) }}"
+          class="btn btn-sm btn-outline-secondary rounded-pill px-3 shadow-sm clear-search-btn"
+        >
+          <i class="bi bi-x-lg me-1" style="font-size: 0.75rem"></i> Clear Search
+        </a>
+      </div>
+
+      {% elif not current_user.is_authenticated or current_user.id != user.id %}
       <h5 class="fw-bold border-bottom pb-3 mb-4" id="results-anchor">
-        {% if search_message and search_message != "All Posts" %}
-        <i class="bi bi-search me-2"></i>Search Results {% else %}
-        <i class="bi bi-journal-text me-2"></i>Recent Posts {% endif %}
+        <i class="bi bi-journal-text me-2"></i>Posts
       </h5>
+      {% endif %}
     </div>
   </div>
 
@@ -366,30 +403,49 @@
   <div
     id="end-of-content"
     class="text-center py-5 text-muted"
-    {% if has_next %}style="display: none"{% endif %}
+    {%
+    if
+    has_next
+    %}style="display: none"
+    {%
+    endif
+    %}
   >
     <p>You've reached the end!</p>
   </div>
 
   {% else %}
   <div class="text-center py-5 text-muted">
-    <i class="bi bi-journal-x fs-1 mb-3 d-block"></i>
     {% if search_message and search_message != "All Posts" %}
+    <i class="bi bi-search fs-1 mb-3 d-block"></i>
     <p class="lead">No matches found for your search.</p>
     <a
-      href="{{ url_for('user_profile', username=user.username) }}"
-      class="btn btn-outline-secondary btn-sm"
-      >Clear Search</a
+      href="{{ url_for('user_profile', username=user.username, tab=active_tab) }}" 
+      class="btn btn-outline-secondary rounded-pill px-4 shadow-sm clear-search-btn"
     >
+      <i class="bi bi-x-lg me-1" style="font-size: 0.85rem;"></i> Clear Search
+    </a>
+
+    {% else %} {% if active_tab == 'drafts' %}
+    <i class="bi bi-file-earmark-lock fs-1 mb-3 d-block"></i>
+    <p class="lead">You don't have any saved drafts.</p>
+    <a
+      href="{{ url_for('add_new_post') }}"
+      class="btn btn-secondary btn-lg rounded-pill px-4 shadow-sm mt-3"
+    >
+      <i class="bi bi-pen-fill me-2"></i>Start a New Draft
+    </a>
     {% else %}
-    <p>No posts published yet.</p>
+    <i class="bi bi-journal-x fs-1 mb-3 d-block"></i>
+    <p class="lead">No posts published yet.</p>
     {% if current_user.is_authenticated and current_user.id == user.id %}
     <a
       href="{{ url_for('add_new_post') }}"
       class="btn btn-primary btn-lg rounded-pill px-4 shadow-sm mt-3"
-      ><i class="bi bi-pen-fill me-2"></i>Write the First Post</a
     >
-    {% endif %} {% endif %}
+      <i class="bi bi-pen-fill me-2"></i>Write the First Post
+    </a>
+    {% endif %} {% endif %} {% endif %}
   </div>
   {% endif %}
 </div>
@@ -411,7 +467,9 @@ posts|length > 0 %}
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-bold text-danger">Delete Post?</h5>
+        <h5 class="modal-title fw-bold text-danger" id="deleteModalTitle">
+          Delete Post?
+        </h5>
         <button
           type="button"
           class="btn-close"
@@ -419,7 +477,7 @@ posts|length > 0 %}
           aria-label="Close"
         ></button>
       </div>
-      <div class="modal-body text-muted">
+      <div class="modal-body text-muted" id="deleteModalBody">
         Are you sure you want to delete this post? This action cannot be undone.
       </div>
       <div class="modal-footer border-0 pt-0">
@@ -446,6 +504,30 @@ posts|length > 0 %}
       const fab = document.getElementById("composeButton");
       const footer = document.querySelector("footer");
 
+      // --- CLEAR SEARCH SPINNER LOGIC ---
+      const clearSearchBtns = document.querySelectorAll(".clear-search-btn");
+      
+      clearSearchBtns.forEach(btn => {
+          btn.addEventListener("click", function (e) {
+              // 1. Prevent multiple clicks if already spinning
+              if (this.classList.contains("disabled")) {
+                  e.preventDefault();
+                  return;
+              }
+
+              // 2. Lock the width so the button doesn't shrink
+              const originalWidth = this.offsetWidth;
+              this.style.width = originalWidth + "px";
+
+              // 3. Disable the button visually and functionally
+              this.classList.add("disabled");
+              this.style.pointerEvents = "none";
+
+              // 4. Inject the Bootstrap spinner
+              this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+          });
+      });
+
       // --- AUTO SCROLL LOGIC ---
       const isSearchActive = {{ 'true' if search_message and search_message != 'All Posts' else 'false' }};
       if (isSearchActive) {
@@ -460,16 +542,31 @@ posts|length > 0 %}
       flashMessage.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-      // --- DELETE MODAL DYNAMIC LINKER ---
-      const deleteModal = document.getElementById('deletePostModal');
-      if (deleteModal) {
-        deleteModal.addEventListener('show.bs.modal', function (event) {
-          const button = event.relatedTarget;
-          const deleteUrl = button.getAttribute('data-delete-url');
-          const form = deleteModal.querySelector('#deletePostForm');
-          form.action = deleteUrl;
-        });
-      }
+  // --- DELETE MODAL DYNAMIC LINKER ---
+  const deleteModal = document.getElementById('deletePostModal');
+  if (deleteModal) {
+    deleteModal.addEventListener('show.bs.modal', function (event) {
+      const button = event.relatedTarget; // Button that triggered the modal
+
+      // 1. Get the data from the button
+      const deleteUrl = button.getAttribute('data-delete-url');
+      const postType = button.getAttribute('data-post-type') || 'post'; // Default to 'post'
+
+      // 2. Update the Form Action
+      const form = deleteModal.querySelector('#deletePostForm');
+      form.action = deleteUrl;
+
+      // 3. Update the Text Dynamically
+      const title = deleteModal.querySelector('#deleteModalTitle');
+      const body = deleteModal.querySelector('#deleteModalBody');
+
+      // Capitalize the first letter for the title (e.g., "draft" -> "Draft")
+      const capitalizedType = postType.charAt(0).toUpperCase() + postType.slice(1);
+
+      if (title) title.innerText = `Delete ${capitalizedType}?`;
+      if (body) body.innerText = `Are you sure you want to delete this ${postType}? This action cannot be undone.`;
+    });
+  }
 
       // --- FAB ANIMATION LOGIC ---
       if (fab) {
@@ -507,7 +604,7 @@ posts|length > 0 %}
           // --- 1. DETECT NAVIGATION TYPE ---
           const navEntries = performance.getEntriesByType("navigation");
           const isBackNavigation = navEntries.length > 0 && navEntries[0].type === "back_forward";
-          
+
           // --- 2. CHECK FOR MUTATIONS (Edit/Delete) ---
           const needsRefresh = localStorage.getItem("feed_needs_refresh");
 
@@ -517,7 +614,7 @@ posts|length > 0 %}
 
           // --- 3. RESTORE SNAPSHOT (Happy Path) ---
           if (isBackNavigation && !needsRefresh && savedHtml && savedScroll) {
-              
+
               // Temporarily disable native scroll to prevent screen jitter
               if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
@@ -528,12 +625,12 @@ posts|length > 0 %}
               document.querySelectorAll('.like-btn').forEach(btn => {
                   const pId = btn.getAttribute('data-post-id');
                   const syncData = localStorage.getItem(`sync_like_${pId}`);
-                  
+
                   if (syncData) {
                       const { count, liked } = JSON.parse(syncData);
                       const icon = btn.querySelector('.heart-icon');
                       const countSpan = btn.querySelector('.like-count');
-                      
+
                       if (icon) {
                           if (liked) {
                               icon.classList.remove('bi-heart');
@@ -562,14 +659,14 @@ posts|length > 0 %}
               sessionStorage.removeItem(cacheKeyHTML);
               sessionStorage.removeItem(cacheKeyPage);
               sessionStorage.removeItem(cacheKeyScroll);
-              
+
           } else {
               // --- 4. CACHE INVALIDATION (Dirty Path) ---
               // If it was a standard redirect/refresh, clear memory.
               sessionStorage.removeItem(cacheKeyHTML);
               sessionStorage.removeItem(cacheKeyPage);
               sessionStorage.removeItem(cacheKeyScroll);
-              
+
               // If they used the back button but the cache was flagged as dirty (Post Deleted/Edited)
               if (isBackNavigation && needsRefresh) {
                   localStorage.removeItem("feed_needs_refresh");
@@ -628,9 +725,16 @@ posts|length > 0 %}
 
             // Fetch specific user posts (or their search results) using dynamic URL
             apiFetch(finalUrl)
-              .then(response => {
-                  // 1. Safety: If redirected to login, response is null. Stop.
+              .then(async response => {
                   if (!response) return null;
+                  
+                  // --- NEW: CATCH 429 RATE LIMITS ---
+                  if (response.status === 429) {
+                      const errorHtml = await response.text();
+                      throw { name: 'RateLimitError', html: errorHtml }; 
+                  }
+                  
+                  if (!response.ok) throw new Error("Network response was not ok");
                   return response.text();
               })
               .then(html => {
@@ -649,9 +753,22 @@ posts|length > 0 %}
                 }
               })
               .catch(err => {
-                console.error("Error loading posts:", err);
-                sentinel.style.display = "none";
-                isLoading = false;
+                if (err && err.name === 'RateLimitError') {
+                    const warningNode = document.createElement('div');
+                    warningNode.innerHTML = err.html;
+                    sentinel.parentNode.insertBefore(warningNode, sentinel);
+                    sentinel.style.display = "none";
+                    
+                    setTimeout(() => {
+                        warningNode.remove();
+                        sentinel.style.display = "block";
+                        isLoading = false; 
+                    }, 3000);
+                } else {
+                    console.error("Error loading posts:", err);
+                    sentinel.style.display = "none";
+                    isLoading = false;
+                }
               });
           }
         }, { rootMargin: "200px" });
