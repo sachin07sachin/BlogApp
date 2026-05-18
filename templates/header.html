@@ -88,6 +88,68 @@
     .active-filter {
       color: #ffc107 !important; /* Yellow icon when filters are active */
     }
+
+    /* --- NAVBAR LINK ANIMATIONS & ACTIVE STATE --- */
+  
+  /* 1. Base styling for the text (No color change on hover) */
+  #mainNav .navbar-nav .nav-link {
+    position: relative;
+    font-weight: 600;
+    /* We leave color alone so it respects your theme natively */
+  }
+
+  /* 2. The Animated Underline (White & Tight) */
+  #mainNav .navbar-nav .nav-link::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    
+    /* Bootstrap's 'py-lg-4' adds bottom padding. This pushes the line up to sit tightly right under the text */
+    bottom: 22px; 
+    left: 50%;
+    
+    background-color: #ffffff; /* Crisp white line */
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transform: translateX(-50%);
+    border-radius: 2px;
+  }
+
+  /* 3. Expand the line on hover or active */
+  #mainNav .navbar-nav .nav-link:hover::after,
+  #mainNav .navbar-nav .nav-link.active-nav::after {
+    width: calc(100% - 2rem);
+  }
+
+  /* --- 4. MOBILE BURGER MENU LOGIC --- */
+  @media (max-width: 991px) {
+    
+    /* Solid white background container with a soft shadow */
+    #navbarResponsive {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 10px 15px;
+      margin-top: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); 
+    }
+    
+    /* Force text to be black against the new white background */
+    #mainNav .navbar-nav .nav-link {
+      color: #000000 !important;
+      width: fit-content;
+    }
+    
+    /* Adjust underline to fit mobile padding and flip color so it's visible */
+    #mainNav .navbar-nav .nav-link::after {
+      bottom: 14px; /* Tighter for mobile's smaller 'py-3' padding */
+      background-color: #000000; /* Black line so you can see it on the white menu */
+    }
+
+    /* Override the hover width for mobile since we shrink-wrapped the link */
+    #mainNav .navbar-nav .nav-link:hover::after,
+    #mainNav .navbar-nav .nav-link.active-nav::after {
+      width: 100%;
+  }
   </style>
   
   <nav class="navbar navbar-expand-lg navbar-light" id="mainNav">
@@ -99,29 +161,29 @@
       <div class="collapse navbar-collapse" id="navbarResponsive">
         
         <ul class="navbar-nav ms-auto py-4 py-lg-0 align-items-center">
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('get_all_posts') }}">Home</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'get_all_posts' %}active-nav{% endif %}" href="{{ url_for('get_all_posts') }}">Home</a></li>
           
           {% if not current_user.is_authenticated %}
           <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" 
+            <a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'login_get' %}active-nav{% endif %}" 
                href="{{ url_for('login_get') }}">
                Login
             </a>
         </li>
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('register') }}">Register</a></li>
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('contact') }}">Support</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'register' %}active-nav{% endif %}" href="{{ url_for('register') }}">Register</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'contact' %}active-nav{% endif %}" href="{{ url_for('contact') }}">Support</a></li>
           {% else %}
           <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('user_profile', username=current_user.username) }}">
+            <a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'user_profile' %}active-nav{% endif %}" href="{{ url_for('user_profile', username=current_user.username) }}">
                 Profile
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('inbox') }}">
+            <a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint in ['inbox', 'chat'] %}active-nav{% endif %}" href="{{ url_for('inbox') }}">
                 
                 {# Wrapper #}
                 <span class="d-inline-block position-relative">
-                    Messages
+                  Chats
                     
                     {# BADGE: Added ID 'nav-unread-badge' and 'd-none' logic #}
                     <span id="nav-unread-badge" 
@@ -136,7 +198,7 @@
           </li>
 
           <li class="nav-item">
-            <a class="nav-link px-lg-3 py-3 py-lg-4 d-flex align-items-center" href="{{ url_for('notifications') }}" title="Notifications">
+            <a class="nav-link px-lg-3 py-3 py-lg-4 d-flex align-items-center {% if request.endpoint == 'notifications' %}active-nav{% endif %}" href="{{ url_for('notifications') }}" title="Notifications">
                 <span class="position-relative d-inline-block" style="line-height: 1;">
                     <i class="bi bi-bell-fill" style="font-size: 1.1rem;"></i>
                     <span id="nav-notif-badge" 
@@ -158,7 +220,7 @@
               
             </form>
           </li>
-          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4" href="{{ url_for('settings') }}">Settings</a></li>
+          <li class="nav-item"><a class="nav-link px-lg-3 py-3 py-lg-4 {% if request.endpoint == 'settings' %}active-nav{% endif %}" href="{{ url_for('settings') }}">Settings</a></li>
           {% endif %}
         </ul>
   
