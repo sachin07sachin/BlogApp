@@ -708,10 +708,14 @@ endblock %} {% block header %}
     let scrollTimeout = undefined;
     let isTypingSignalSent = false;
 
-    // --- INFINITE SCROLL VARIABLES ---
-    let currentPage = 1;
+    // --- INFINITE SCROLL VARIABLES (Cursor Based) ---
+    // Inject the ID of the oldest message rendered by Jinja as the starting cursor
+    // (Because history is reversed in Python, history[0] is the top message)
+    let currentCursor = {{ history[0].id if history else 'null' }};
+    
+    // If Jinja loaded exactly 50 messages, assume there are more. Otherwise, we reached the top.
+    let hasMoreHistory = {{ 'true' if history|length == 50 else 'false' }};
     let isLoadingHistory = false;
-    let hasMoreHistory = true;
 
     // ==========================================
     // UI HELPERS (Flash Messages)
@@ -913,21 +917,22 @@ endblock %} {% block header %}
 
     // --- 3. INFINITE SCROLL LOGIC (Robust History Dividers + Spinner) ---
     async function loadOlderMessages() {
-      if (isLoadingHistory || !hasMoreHistory) return;
+      // THE FIX: Added currentCursor to the safety check
+      if (isLoadingHistory || !hasMoreHistory || !currentCursor) return;
       isLoadingHistory = true;
 
       // 1. Show Spinner
       if (loadingSpinner) loadingSpinner.classList.remove("d-none");
 
       const oldScrollHeight = chatHistory.scrollHeight;
-      const nextPage = currentPage + 1;
-
       let isRateLimited = false; 
 
       try {
         const fetchFn = window.apiFetch || fetch;
+        
+        // THE FIX: Pass the cursor ID instead of the page number
         const response = await fetchFn(
-          `/api/chat/${RECIPIENT_ID}/history?page=${nextPage}`,
+          `/api/chat/${RECIPIENT_ID}/history?cursor=${currentCursor}`,
         );
 
         if (!response) {
@@ -956,12 +961,11 @@ endblock %} {% block header %}
               null,
               msg.timestamp,
               msg.is_read ? "read" : "sent",
-              msg.id, // <--- PASS REAL ID
-              msg.is_deleted, // <--- PASS DELETED STATUS
+              msg.id, 
+              msg.is_deleted, 
             );
 
             // --- HISTORY DIVIDER LOGIC ---
-            // Determine the actual top message/divider, IGNORING the spinner
             let currentTop = chatHistory.firstElementChild;
             if (currentTop && currentTop.id === "loadingSpinner") {
               currentTop = currentTop.nextElementSibling;
@@ -971,14 +975,11 @@ endblock %} {% block header %}
               // 1. If Top is a DIVIDER, check if we fit under it
               if (currentTop.classList.contains("date-divider")) {
                 const rawDate = currentTop.getAttribute("data-observer-date");
-
-                // CRITICAL SAFETY CHECK: Prevent "split of null" crash
                 if (rawDate) {
                   const dividerDate = getComparisonDate(new Date(rawDate));
                   const msgDate = getComparisonDate(new Date(msg.timestamp));
 
                   if (dividerDate === msgDate) {
-                    // Same date. Insert message AFTER divider.
                     if (currentTop.nextSibling) {
                       chatHistory.insertBefore(msgEl, currentTop.nextSibling);
                     } else {
@@ -993,7 +994,6 @@ endblock %} {% block header %}
               if (currentTop.classList.contains("message-wrapper")) {
                 const topTs = currentTop.getAttribute("data-timestamp");
                 if (topTs) {
-                  // Safety Check: Ensure topTs exists before splitting
                   const topDate = topTs
                     ? getComparisonDate(new Date(topTs))
                     : null;
@@ -1009,16 +1009,14 @@ endblock %} {% block header %}
               }
             }
 
-            // INSERTION: Insert after spinner (so spinner stays at top)
+            // INSERTION: Insert after spinner
             if (loadingSpinner && loadingSpinner.parentNode === chatHistory) {
-              // Insert immediately after spinner (effectively top of messages)
               if (loadingSpinner.nextSibling) {
                 chatHistory.insertBefore(msgEl, loadingSpinner.nextSibling);
               } else {
                 chatHistory.appendChild(msgEl);
               }
             } else {
-              // Fallback if no spinner found
               chatHistory.insertBefore(msgEl, chatHistory.firstChild);
             }
           });
@@ -1037,7 +1035,8 @@ endblock %} {% block header %}
             }
           }
 
-          currentPage = nextPage;
+          // THE FIX: Update the cursor instead of the page number
+          currentCursor = data.next_cursor;
           hasMoreHistory = data.has_next;
 
           // Maintain Scroll Position

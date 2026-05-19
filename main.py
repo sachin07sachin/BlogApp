@@ -3006,21 +3006,35 @@ def chat(user_id):
 @login_required
 @limiter.limit("120 per minute; 5 per second", key_func=hybrid_rate_limit_key)
 def get_chat_history(user_id):
-    # Get 'page' from URL (e.g., ?page=2), default to 1
-    page = request.args.get('page', 1, type=int)
-    per_page = 40
+    # 1. Grab the 'cursor' (Message ID) instead of 'page'
+    cursor = request.args.get('cursor', type=int)
+    per_page = 50
 
     stmt = db.select(Message).where(
         or_(
             and_(Message.sender_id == current_user.id, Message.recipient_id == user_id),
             and_(Message.sender_id == user_id, Message.recipient_id == current_user.id)
         )
-    ).order_by(Message.timestamp.desc()) # Newest first
+    )
 
-    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
+    # 2. Apply Cursor Filter (Fetch messages strictly older than the cursor ID)
+    if cursor:
+        stmt = stmt.where(Message.id < cursor)
+
+    # 3. Sort by ID (strictly unique) and fetch ONE extra item to check for a next page
+    stmt = stmt.order_by(Message.id.desc()).limit(per_page + 1)
+    
+    results = db.session.scalars(stmt).all()
+    
+    # 4. Determine if there is more history
+    has_next = len(results) > per_page
+    messages_to_show = results[:per_page] # Slice off the extra item
+    
+    # 5. Extract the new cursor (The ID of the oldest message in this batch)
+    next_cursor = messages_to_show[-1].id if has_next and messages_to_show else None
     
     messages = []
-    for msg in pagination.items:
+    for msg in messages_to_show:
         messages.append({
             'id': msg.id,
             'body': msg.body,
@@ -3033,8 +3047,8 @@ def get_chat_history(user_id):
     
     return jsonify({
         'messages': messages, 
-        'has_next': pagination.has_next,
-        'next_page': pagination.next_num
+        'has_next': has_next,
+        'next_cursor': next_cursor  # Return cursor instead of next_page
     })
 
 @app.route('/api/message/<int:message_id>/delete', methods=['POST'])
