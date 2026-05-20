@@ -49,6 +49,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 from urllib.parse import urlparse, unquote
 import socket
 import ipaddress
@@ -1268,6 +1269,43 @@ def request_entity_too_large(e):
     flash("File is too large. The maximum limit is 8MB.", "danger")
     
     # Redirect safely back to the feed (or wherever they came from)
+    return redirect(request.referrer or url_for('get_all_posts'))
+
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    """
+    Catches ALL unhandled exceptions (500 errors).
+    If it's an API/AJAX request, returns clean JSON so the frontend doesn't crash.
+    If it's a normal browser request, falls back to a standard error page.
+    """
+    # 1. Let standard HTTP errors (like 404s or 403s) pass through normally
+    if isinstance(e, HTTPException):
+        return e
+
+    # 2. Log the actual crash for our backend debugging
+    logger.error(f"Unhandled Server Exception: {e}", exc_info=True)
+
+    # 3. Detect if the client is expecting JSON (Fetch API / AJAX)
+    is_ajax = (
+        request.is_json or
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        'application/json' in request.headers.get('Accept', '') or
+        request.path.startswith('/api/') or
+        request.path.startswith('/like/') or
+        request.path.endswith('/load') or
+        request.path.endswith('/load-comments') or
+        request.path == '/upload-image'
+    )
+
+    if is_ajax:
+        # Give the frontend a safe, readable JSON error to handle
+        return jsonify({
+            "error": "A server error occurred. Our team has been notified.",
+            "success": False
+        }), 500
+
+    # 4. Standard Browser Request - show a generic flash and redirect, or render a 500.html
+    flash("An error occurred. Please try again later.", "danger")
     return redirect(request.referrer or url_for('get_all_posts'))
 
 @app.route("/health")
