@@ -1019,7 +1019,7 @@ def send_digest():
                 
                 send_email(
                     to=user.email,
-                    subject=f"You missed some activity on Blog App",
+                    subject=f"You missed some activity on QuillOrbis",
                     html_body=html_body
                 )
 
