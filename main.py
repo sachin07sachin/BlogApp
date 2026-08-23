@@ -56,6 +56,7 @@ import ipaddress
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
 from calendar import month_name
+from whitenoise import WhiteNoise
 
 # Local Imports
 from forms import (
@@ -134,6 +135,15 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 # Security: Proxy Fix (Required for Render/Heroku/Nginx)
 if os.environ.get("ENV") == "production":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
+# --- WhiteNoise "Local CDN" Setup ---
+# This serves static files with Gzip/Brotli compression and 1-year cache headers
+app.wsgi_app = WhiteNoise(
+    app.wsgi_app,
+    root=os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static'),
+    prefix='static/',
+    max_age=31536000  # Tells the browser to cache these files for 1 year
+)
 
 # Initialize Extensions
 ckeditor = CKEditor(app)
