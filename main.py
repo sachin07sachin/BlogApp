@@ -16,6 +16,7 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import redis
+import re
 # Replaced native threading with SocketIO background tasks for Eventlet compatibility
 # from threading import Thread 
 
@@ -581,6 +582,15 @@ def normalize_whitespace_filter(text):
     if not text:
         return ""
     return " ".join(text.split())
+
+
+def normalize_contact_message(message):
+    """Normalize message text for duplicate detection."""
+    message = message.casefold()
+    message = re.sub(r"\s+", " ", message)
+    message = re.sub(r"[^\w\s]", "", message)
+    return message.strip()
+
 
 def get_gravatar_url(email, size=200):
     """Generates a Gravatar URL for the given email."""
@@ -1234,12 +1244,33 @@ def handle_rate_limit(e):
         # B. Buttons and TinyMCE Image Uploads expect JSON.
         return jsonify({"error": f"You are moving too fast. {e.description}"}), 429
     
+    endpoint = request.endpoint
+
+    logger.warning(
+    f"Rate limit exceeded ({e.description}) "
+    f"endpoint={request.endpoint} "
+    f"method={request.method} "
+    f"path={request.path} "
+    f"IP={get_remote_address()} "
+    f"email={request.form.get('email', 'unknown')}"
+)
+
+    if endpoint == "contact":
+        flash(
+            "You've submitted messages too quickly. "
+            "Please wait before trying again.",
+            "warning"
+        )
+        return render_template(
+            "contact.html",
+            form=ContactForm(),
+            captcha_required=app.config["CAPTCHA_ENABLED"],
+            hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+        ), 429
+
     if app.config["CAPTCHA_ENABLED"]:
         session["captcha_required"] = True
-    
-    logger.warning(f"Rate limit exceeded ({e.description}) IP={get_remote_address()} email={request.form.get('email', 'unknown')}")
 
-    endpoint = request.endpoint
     if endpoint == "login_post":
         flash("Too many requests detected. Please verify you are human.", "danger")
         return render_template("login.html", login_form=LoginForm(), captcha_required=True, hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]), 429
@@ -2831,10 +2862,75 @@ def delete_comment(comment_id):
         return redirect(url_for('show_post', post_id=post_id, _anchor='comment-form-section'))
 
 @app.route("/contact", methods=["GET", "POST"])
-@limiter.limit("120 per hour", key_func=hybrid_rate_limit_key, methods=["POST"])
+@limiter.limit("20 per hour", key_func=get_remote_address, methods=["POST"])
+@limiter.limit("5 per hour", key_func=hybrid_rate_limit_key, methods=["POST"])
+@limiter.limit("3 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 def contact():
     form = ContactForm()
+
+    # Honeypot anti-spam check
+    if request.method == "POST" and request.form.get("website", "").strip():
+        logger.warning(
+            "Contact honeypot triggered; submission rejected. "
+            "IP=%s",
+            get_remote_address()
+        )
+        return "Invalid submission", 400
     if form.validate_on_submit():
+
+        
+        # hCaptcha verification
+        if app.config["CAPTCHA_ENABLED"]:
+            token = request.form.get("h-captcha-response")
+
+            if not verify_hcaptcha(token, get_remote_address()):
+                flash(
+                    "CAPTCHA verification failed. Please complete "
+                    "the challenge and try again.",
+                    "danger"
+                )
+                return render_template(
+                    "contact.html",
+                    form=form,
+                    captcha_required=True,
+                    hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+                ), 400
+
+        
+        # Duplicate-submission check: same email and normalized message
+        # within the previous 10 minutes.
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+        submitted_email = form.email.data.strip().casefold()
+        submitted_message = normalize_contact_message(form.message.data)
+
+        recent_messages = ContactMessage.query.filter(
+            db.func.lower(ContactMessage.email) == submitted_email,
+            ContactMessage.timestamp >= cutoff_time
+        ).all()
+
+        duplicate = any(
+            normalize_contact_message(existing.message) == submitted_message
+            for existing in recent_messages
+        )
+
+        if duplicate:
+            logger.warning(
+                "Duplicate contact submission rejected. IP=%s",
+                get_remote_address()
+            )
+            flash(
+                "You've already sent a similar message recently. "
+                "Please wait a few minutes before submitting it again.",
+                "warning"
+            )
+            return render_template(
+    "contact.html",
+    form=form,
+    captcha_required=app.config["CAPTCHA_ENABLED"],
+    hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+), 200
+
         try:
             # 1. NEW: Save to Database
             with safe_commit():
@@ -2870,7 +2966,12 @@ def contact():
             logger.exception("Contact email failed")
             flash("Failed to send message. Please try again later.", "danger")
     
-    return render_template("contact.html", form=form)
+    return render_template(
+    "contact.html",
+    form=form,
+    captcha_required=app.config["CAPTCHA_ENABLED"],
+    hcaptcha_site_key=app.config["HCAPTCHA_SITE_KEY"]
+)
 
 # -------------------------------------------------------------------
 # 12. MESSAGING SYSTEM ROUTES
