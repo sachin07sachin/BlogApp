@@ -2866,6 +2866,10 @@ def delete_comment(comment_id):
 @limiter.limit("5 per hour", key_func=hybrid_rate_limit_key, methods=["POST"])
 @limiter.limit("3 per minute", key_func=hybrid_rate_limit_key, methods=["POST"])
 def contact():
+    return (
+        "The contact page is temporarily unavailable. Please try again later.",
+        503,
+    )
     form = ContactForm()
 
     # Honeypot anti-spam check
