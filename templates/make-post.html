@@ -187,8 +187,8 @@
             </div>
 
             <div class="form-text text-muted small mt-2">
-              Supported: png, jpeg, gif, webp. Best fit:
-              <strong>16:9</strong> ratio. Max Size: <strong>8MB</strong>.
+              Supported: png, jpeg/jpg, gif, webp. Best fit:
+              <strong>16:9</strong> ratio. Max Size: <strong>1MB</strong>.
             </div>
           </div>
 
@@ -374,13 +374,13 @@
       const file = blobInfo.blob();
 
       // 1. FRONTEND UX VALIDATION
-      const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+      const MAX_SIZE = 1 * 1024 * 1024; // 1MB per image
       if (file.size > MAX_SIZE) {
-        reject('Image is too large. Maximum size is 8MB.');
+        reject('Image is too large. Maximum size is 1MB.');
         return;
       }
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
         reject('Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.');
         return;
@@ -458,6 +458,7 @@
 
     const allowedMimeTypes = [
       "image/jpeg",
+      "image/jpg",
       "image/png",
       "image/gif",
       "image/webp",
@@ -521,7 +522,7 @@
     // 2. File Selection (UPDATED WITH SIZE CHECK)
     hiddenFileInput.addEventListener("change", function (e) {
       const file = e.target.files[0];
-      const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB Limit (Matches Backend)
+      const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB Limit (Matches Backend)
 
       if (file) {
         // A. Check Type
@@ -533,7 +534,7 @@
 
         // B. Check Size (CRITICAL UPDATE)
         if (file.size > MAX_FILE_SIZE) {
-          showError("File is too large. Maximum size is 8MB.");
+          showError("File is too large. Maximum size is 1MB.");
           hiddenFileInput.value = "";
           return;
         }
@@ -678,6 +679,39 @@
         // 1. Force TinyMCE to sync its content to the hidden textarea
         if (typeof tinymce !== 'undefined') {
             tinymce.triggerSave();
+        }
+
+        // Validate article content before submitting
+        const bodyField = document.getElementById("body");
+        const articleHtml = bodyField ? bodyField.value : "";
+
+        const articleHtmlBytes = new TextEncoder().encode(articleHtml).length;
+
+        const imageCount = (articleHtml.match(/<img\b/gi) || []).length;
+
+        const textContainer = document.createElement("div");
+        textContainer.innerHTML = articleHtml;
+
+        const plainTextLength = (textContainer.textContent || "").length;
+
+        let contentError = "";
+
+        if (articleHtmlBytes > 200 * 1024) {
+            contentError = "Article content is too large. Maximum HTML size is 200 KB.";
+        } else if (imageCount > 10) {
+            contentError = "An article can contain a maximum of 10 embedded images.";
+        } else if (plainTextLength > 50000) {
+            contentError = "Article text cannot exceed 50,000 characters.";
+        }
+
+        if (contentError) {
+            if (window.showAppToast) {
+                window.showAppToast(contentError, "danger");
+            } else {
+                alert(contentError);
+            }
+
+            return;
         }
 
         // 2. Lock button widths to prevent shrinking

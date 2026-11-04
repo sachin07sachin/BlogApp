@@ -13,7 +13,7 @@ class CreatePostForm(FlaskForm):
     # --- NEW: File Upload Field ---
     img_file = FileField("Upload Image", validators=[
         Optional(),
-        FileAllowed(['png', 'jpeg', 'gif', 'webp'], 'Images only!')
+        FileAllowed(['png', 'jpeg', 'jpg', 'gif', 'webp'], 'Images only!')
     ])
     # body = CKEditorField("Blog Content", validators=[DataRequired()])
     body = TextAreaField("Blog Content", validators=[DataRequired()])
@@ -80,7 +80,7 @@ class CommentForm(FlaskForm):
 
 class ContactForm(FlaskForm):
     name = StringField("Name", validators=[DataRequired(), Length(max=120, message="Name cannot exceed 120 characters.")])
-    email = StringField("Email", validators=[DataRequired(), Email()])
+    email = StringField("Email", validators=[DataRequired(), Email(), Length(max=255, message="Email cannot exceed 255 characters.")])
     message = TextAreaField(
         "Message",
         validators=[DataRequired(), Length(min=10, max=2000, message="Message must be between 10 and 2000 characters.")]

@@ -54,6 +54,7 @@ from werkzeug.exceptions import HTTPException
 from urllib.parse import urlparse, unquote
 import socket
 import ipaddress
+import html as html_lib
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pywebpush import webpush, WebPushException
 from calendar import month_name
@@ -120,7 +121,15 @@ class Config:
     # --- NEW: Upload Configuration ---
     # Define where uploads go. 'static/uploads' is easiest for serving.
     # UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static/uploads')
-    MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8MB Max Size
+    # MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8MB Max Size
+
+    # Upload and article-content limits
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB per HTTP request
+    MAX_IMAGE_SIZE = 1 * 1024 * 1024       # 1 MB per individual image
+
+    MAX_ARTICLE_HTML_SIZE = 200 * 1024     # 200 KB article HTML
+    MAX_ARTICLE_TEXT_LENGTH = 50_000       # 50,000 plain-text characters
+    MAX_ARTICLE_IMAGES = 10                # Maximum embedded images
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -623,35 +632,108 @@ def is_safe_url(url):
         logger.warning(f"URL validation failed for {url}: {e}")
         return False
 
+# def validate_image_stream(stream):
+#     """
+#     SECURITY: Reads the first 512 bytes of a file/stream to verify it is actually an image.
+#     Uses 'filetype' library to detect Magic Bytes (signatures).
+#     """
+#     try:
+#         # Read the first 512 bytes (filetype needs ~261 bytes, but 512 is standard safety)
+#         header = stream.read(512)
+        
+#         # Reset the stream pointer so Cloudinary can read it from the start later
+#         stream.seek(0) 
+        
+#         # Guess the type based on the bytes
+#         kind = filetype.guess(header)
+        
+#         # 1. Check if it detected ANYTHING
+#         if kind is None:
+#             return False
+            
+#         # 2. Strict Check: Ensure the MIME type indicates an image
+#         # This blocks video files or archives even if they are valid files
+#         if not kind.mime.startswith('image/'):
+#             return False
+            
+#         return True
+        
+#     except Exception as e:
+#         logger.error(f"Image validation error: {e}")
+#         return False
+
 def validate_image_stream(stream):
     """
-    SECURITY: Reads the first 512 bytes of a file/stream to verify it is actually an image.
-    Uses 'filetype' library to detect Magic Bytes (signatures).
+    Validate an uploaded image's size and actual file signature.
+    The size check is server-side; browser checks are only for user experience.
     """
     try:
-        # Read the first 512 bytes (filetype needs ~261 bytes, but 512 is standard safety)
+        stream.seek(0, os.SEEK_END)
+        file_size = stream.tell()
+        stream.seek(0)
+
+        if file_size > current_app.config["MAX_IMAGE_SIZE"]:
+            return False
+
         header = stream.read(512)
-        
-        # Reset the stream pointer so Cloudinary can read it from the start later
-        stream.seek(0) 
-        
-        # Guess the type based on the bytes
+        stream.seek(0)
+
         kind = filetype.guess(header)
-        
-        # 1. Check if it detected ANYTHING
-        if kind is None:
+
+        if kind is None or kind.mime not in {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/gif",
+            "image/webp"
+        }:
             return False
-            
-        # 2. Strict Check: Ensure the MIME type indicates an image
-        # This blocks video files or archives even if they are valid files
-        if not kind.mime.startswith('image/'):
-            return False
-            
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Image validation error: {e}")
+
+        try:
+            stream.seek(0)
+        except Exception:
+            pass
+
         return False
+
+def validate_post_content(body):
+    """Validate article HTML size, text length, and embedded image count."""
+
+    body = body or ""
+
+    # 1. Maximum HTML size (UTF-8 bytes)
+    html_size = len(body.encode("utf-8"))
+
+    if html_size > current_app.config["MAX_ARTICLE_HTML_SIZE"]:
+        return "Article content is too large. Please keep the HTML under 200 KB."
+
+    # 2. Maximum embedded images
+    image_count = len(
+        re.findall(r"<img\b", body, flags=re.IGNORECASE)
+    )
+
+    if image_count > current_app.config["MAX_ARTICLE_IMAGES"]:
+        return "An article can contain a maximum of 10 embedded images."
+
+    # 3. Maximum readable text length
+    plain_text = bleach.clean(
+        body,
+        tags=[],
+        attributes={},
+        strip=True
+    )
+
+    plain_text = html_lib.unescape(plain_text)
+
+    if len(plain_text) > current_app.config["MAX_ARTICLE_TEXT_LENGTH"]:
+        return "Article text is too long. Please keep it under 50,000 characters."
+
+    return None
 
 def validate_and_download_url(url):
     """
@@ -659,7 +741,8 @@ def validate_and_download_url(url):
     Prevents DoS attacks (Never-ending streams or 5GB files).
     Returns: (bytes_data, error_message)
     """
-    MAX_SIZE = 8 * 1024 * 1024  # 8 MB limit (Matches Upload Limit)
+    # MAX_SIZE = 8 * 1024 * 1024  # 8 MB limit (Matches Upload Limit)
+    MAX_SIZE = current_app.config["MAX_IMAGE_SIZE"]
 
     # SSRF Protection Check
     if not is_safe_url(url):
@@ -678,7 +761,7 @@ def validate_and_download_url(url):
             # 2. Check Content-Length Header (Fast check)
             content_length = r.headers.get('Content-Length')
             if content_length and int(content_length) > MAX_SIZE:
-                return None, "Image at URL is too large (Max 8MB)."
+                return None, "Image at URL is too large (maximum 1 MB)."
             
             # 3. Check Content-Type Header (Basic check)
             content_type = r.headers.get('Content-Type', '')
@@ -687,11 +770,25 @@ def validate_and_download_url(url):
 
             # 4. Download in Chunks (The Real Safety Net)
             # If header is missing/fake, this stops the download loop at 8MB
-            image_data = b""
-            for chunk in r.iter_content(chunk_size=1024):
-                image_data += chunk
+            # image_data = b""
+            # for chunk in r.iter_content(chunk_size=1024):
+            #     image_data += chunk
+            #     if len(image_data) > MAX_SIZE:
+            #         return None, "Image at URL is too large (Max 8MB)."
+
+            # Enforce the 1 MB limit even if Content-Length is missing or incorrect.
+            image_data = bytearray()
+
+            for chunk in r.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+
+                image_data.extend(chunk)
+
                 if len(image_data) > MAX_SIZE:
-                    return None, "Image at URL is too large (Max 8MB)."
+                    return None, "Image at URL is too large (maximum 1 MB)."
+
+            image_data = bytes(image_data)
             
             # 5. Verify Magic Bytes on the downloaded data
             # Wrap bytes in a stream object for our validator
@@ -1301,16 +1398,40 @@ def add_security_headers(response):
     response.headers["Permissions-Policy"] = "geolocation=()"
     return response
 
+# @app.errorhandler(413)
+# def request_entity_too_large(e):
+#     # Log the security event
+#     logger.warning(f"413 Error: File upload too large. IP: {get_remote_address()}")
+    
+#     # Flash a message the user can actually see after the reload
+#     flash("File is too large. The maximum limit is 8MB.", "danger")
+    
+#     # Redirect safely back to the feed (or wherever they came from)
+#     return redirect(request.referrer or url_for('get_all_posts'))
+
 @app.errorhandler(413)
 def request_entity_too_large(e):
-    # Log the security event
-    logger.warning(f"413 Error: File upload too large. IP: {get_remote_address()}")
-    
-    # Flash a message the user can actually see after the reload
-    flash("File is too large. The maximum limit is 8MB.", "danger")
-    
-    # Redirect safely back to the feed (or wherever they came from)
-    return redirect(request.referrer or url_for('get_all_posts'))
+
+    logger.warning(
+        f"413 Error: Request body too large. IP: {get_remote_address()}"
+    )
+
+    # TinyMCE expects JSON, not an HTML redirect.
+    if request.path == "/upload-image":
+        return jsonify({
+            "error": (
+                "Upload request is too large. "
+                "The maximum request size is 10 MB; "
+                "each image must be 1 MB or smaller."
+            )
+        }), 413
+
+    flash(
+        "Your submission is too large. The maximum request size is 10 MB.",
+        "danger"
+    )
+
+    return redirect(request.referrer or url_for("get_all_posts"))
 
 @app.errorhandler(Exception)
 def handle_global_exception(e):
@@ -2331,8 +2452,14 @@ def add_new_post():
         # process() creates the form fields with the restored data
         form.process(data=restored_data) 
         # flash("We restored your post content.", "info")
-    
+
     if form.validate_on_submit():
+
+        content_error = validate_post_content(form.body.data)
+
+        if content_error:
+            flash(content_error, "danger")
+            return render_template("make-post.html", form=form)
         # 1. DUPLICATE CHECK (Case-Insensitive)
         # Prevents database "UniqueViolation" crashes
         existing_post = db.session.scalar(
@@ -2369,7 +2496,7 @@ def add_new_post():
             url = form.img_url.data
             
             # 1. SECURITY: Stream & Validate URL Content
-            # Checks size limit (8MB) and Magic Bytes before downloading fully
+            # Checks size limit and Magic Bytes before downloading fully
             image_data, error_msg = validate_and_download_url(url)
             
             if error_msg:
@@ -2547,6 +2674,19 @@ def edit_post(post_id):
         # flash("We restored your unsaved edits.", "info")
     
     if form.validate_on_submit():
+
+        content_error = validate_post_content(form.body.data)
+
+        if content_error:
+            flash(content_error, "danger")
+
+            return render_template(
+                "make-post.html",
+                form=form,
+                is_edit=True,
+                post_id=post.id,
+                is_published=post.is_published
+            )
         # 1. DUPLICATE CHECK (Excluding current post)
         existing_post = db.session.scalar(
             db.select(BlogPost).where(
