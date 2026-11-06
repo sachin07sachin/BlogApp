@@ -44,7 +44,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, text, or_, and_, extract, func, select, desc
+from sqlalchemy import Integer, String, Text, Boolean, ForeignKey, DateTime, text, or_, and_, extract, func, select, desc, Index
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -340,7 +340,8 @@ class BlogPost(db.Model):
     author_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("users.id", ondelete="CASCADE"))
     author = relationship("User", back_populates="posts")
     
-    title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    normalized_title: Mapped[str] = mapped_column(String(750), nullable=False)
     subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
     date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -353,6 +354,15 @@ class BlogPost(db.Model):
     can_comment: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    __table_args__ = (
+        Index(
+            "uq_blog_posts_normalized_title_published",
+            "normalized_title",
+            unique=True,
+            postgresql_where=text("is_published = true")
+        ),
+    )
     
     comments = relationship("Comment", back_populates="parent_post", passive_deletes=True)
 
@@ -933,6 +943,16 @@ def anonymize_user_data(user):
         db.session.delete(notif)
         
     return user
+
+# -----------------------------
+# Title normalization
+# -----------------------------
+
+def normalize_title(title: str) -> str:
+    if not title:
+        return ""
+
+    return " ".join(title.split()).casefold()
 
 # -------------------------------------------------------------------
 # 5. NOTIFICATION SYSTEM
@@ -2462,14 +2482,35 @@ def add_new_post():
             return render_template("make-post.html", form=form)
         # 1. DUPLICATE CHECK (Case-Insensitive)
         # Prevents database "UniqueViolation" crashes
-        existing_post = db.session.scalar(
-            db.select(BlogPost).where(BlogPost.title.ilike(form.title.data))
-        )
+        # existing_post = db.session.scalar(
+        #     db.select(BlogPost).where(BlogPost.title.ilike(form.title.data))
+        # )
         
-        if existing_post:
-            flash("A post with this title already exists. Please choose a different title.", "warning")
-            # This will now show up because we fixed make-post.html!
-            return render_template("make-post.html", form=form)
+        # if existing_post:
+        #     flash("A post with this title already exists. Please choose a different title.", "warning")
+        #     # This will now show up because we fixed make-post.html!
+        #     return render_template("make-post.html", form=form)
+
+        action = request.form.get("action")
+        is_published = action == "publish"
+
+        normalized_title = normalize_title(form.title.data)
+
+        if is_published:
+            existing_post = db.session.scalar(
+                db.select(BlogPost).where(
+                    BlogPost.normalized_title == normalized_title,
+                    BlogPost.is_published.is_(True)
+                )
+            )
+
+            if existing_post:
+                flash(
+                    "A published post with this title already exists. "
+                    "Please choose a different title.",
+                    "warning"
+                )
+                return render_template("make-post.html", form=form)
         
         # IMAGE LOGIC (Enforce "One or the Other")
         final_img_url = None
@@ -2518,8 +2559,8 @@ def add_new_post():
             return render_template("make-post.html", form=form)
         
         # Grab the action from the clicked button
-        action = request.form.get("action")
-        is_published = True if action == "publish" else False
+        # action = request.form.get("action")
+        # is_published = True if action == "publish" else False
 
         # 2. SAVE POST (Database Transaction)
         # We isolate the DB save so we know exactly when the post is safe.
@@ -2527,6 +2568,7 @@ def add_new_post():
             with safe_commit():
                 post = BlogPost(
                     title=form.title.data,
+                    normalized_title=normalized_title,
                     subtitle=form.subtitle.data,
                     body=clean_html(form.body.data),
                     img_url=final_img_url,
@@ -2538,9 +2580,28 @@ def add_new_post():
                 # Flush ensures post.id is available
             # Post is safely saved here (Commit happened in safe_commit)
         
-        except IntegrityError:
-            # Captures the specific "UniqueViolation" from the DB
-            flash("A post with this title already exists.", "warning")
+        # except IntegrityError:
+        #     # Captures the specific "UniqueViolation" from the DB
+        #     flash("A post with this title already exists.", "warning")
+        #     return render_template("make-post.html", form=form)
+
+        except IntegrityError as e:
+            constraint_name = getattr(
+                getattr(e.orig, "diag", None),
+                "constraint_name",
+                None
+            )
+
+            if constraint_name == "uq_blog_posts_normalized_title_published":
+                flash(
+                    "A published post with this title already exists. "
+                    "Please choose a different title.",
+                    "warning"
+                )
+            else:
+                logger.exception("Integrity error during post creation")
+                flash("Failed to create post. Please try again.", "danger")
+
             return render_template("make-post.html", form=form)
 
         except Exception as e:
@@ -2688,16 +2749,47 @@ def edit_post(post_id):
                 is_published=post.is_published
             )
         # 1. DUPLICATE CHECK (Excluding current post)
-        existing_post = db.session.scalar(
-            db.select(BlogPost).where(
-                BlogPost.title.ilike(form.title.data),
-                BlogPost.id != post_id 
-            )
-        )
+        # existing_post = db.session.scalar(
+        #     db.select(BlogPost).where(
+        #         BlogPost.title.ilike(form.title.data),
+        #         BlogPost.id != post_id 
+        #     )
+        # )
         
-        if existing_post:
-            flash("A post with this title already exists. Please choose a different title.", "warning")
-            return render_template("make-post.html", form=form, is_edit=True)
+        # if existing_post:
+        #     flash("A post with this title already exists. Please choose a different title.", "warning")
+        #     return render_template("make-post.html", form=form, is_edit=True)
+
+        # Determine whether the user is publishing or saving a draft.
+        action = request.form.get("action")
+        is_published = action == "publish"
+
+        # Normalize the submitted title.
+        normalized_title = normalize_title(form.title.data)
+
+        # Check duplicates only when publishing.
+        if is_published:
+            existing_post = db.session.scalar(
+                db.select(BlogPost).where(
+                    BlogPost.normalized_title == normalized_title,
+                    BlogPost.is_published.is_(True),
+                    BlogPost.id != post.id
+                )
+            )
+
+            if existing_post:
+                flash(
+                    "A published post with this title already exists. "
+                    "Please choose a different title.",
+                    "warning"
+                )
+                return render_template(
+                    "make-post.html",
+                    form=form,
+                    is_edit=True,
+                    post_id=post.id,
+                    is_published=post.is_published
+                )
         
         new_cloud_url = None
         is_new_upload = False
@@ -2708,12 +2800,12 @@ def edit_post(post_id):
             # Security Check
             if not validate_image_stream(file.stream):
                 flash("Invalid file content.", "danger")
-                return render_template("make-post.html", form=form, is_edit=True)
+                return render_template("make-post.html", form=form, is_edit=True, is_published=post.is_published)
                 
             uploaded_url = save_picture(file)
             if not uploaded_url:
                 flash("Image upload failed. Update cancelled.", "danger")
-                return render_template("make-post.html", form=form, is_edit=True)
+                return render_template("make-post.html", form=form, is_edit=True, is_published=post.is_published)
             
             new_cloud_url = uploaded_url
             is_new_upload = True
@@ -2726,19 +2818,19 @@ def edit_post(post_id):
             image_data, error_msg = validate_and_download_url(url)
             if error_msg:
                 flash(error_msg, "danger")
-                return render_template("make-post.html", form=form, is_edit=True)
+                return render_template("make-post.html", form=form, is_edit=True, is_published=post.is_published)
                 
             uploaded_url = save_picture(image_data)
             if not uploaded_url:
                 flash("Failed to update image from URL.", "danger")
-                return render_template("make-post.html", form=form, is_edit=True)
+                return render_template("make-post.html", form=form, is_edit=True, is_published=post.is_published)
                 
             new_cloud_url = uploaded_url
             is_new_upload = True
 
         # Grab the action from the clicked button
-        action = request.form.get("action")
-        is_published = True if action == "publish" else False
+        # action = request.form.get("action")
+        # is_published = True if action == "publish" else False
 
         # 2. SAVE CHANGES (Database Transaction)
         try:
@@ -2746,6 +2838,7 @@ def edit_post(post_id):
 
             with safe_commit():
                 form.populate_obj(post)
+                post.normalized_title = normalized_title
                 post.body = clean_html(form.body.data)
                 post.is_published = is_published
                 # Handle Image Update
@@ -2764,11 +2857,43 @@ def edit_post(post_id):
             if is_new_upload:
                 socketio.start_background_task(delete_picture, old_img_url)
         
+        except IntegrityError as e:
+            constraint_name = getattr(
+                getattr(e.orig, "diag", None),
+                "constraint_name",
+                None
+            )
+
+            if constraint_name == "uq_blog_posts_normalized_title_published":
+                flash(
+                    "A published post with this title already exists. "
+                    "Please choose a different title.",
+                    "warning"
+                )
+            else:
+                logger.exception("Integrity error during post edit")
+                flash("Failed to update post. Please try again.", "danger")
+
+            return render_template(
+                "make-post.html",
+                form=form,
+                is_edit=True,
+                post_id=post.id,
+                is_published=post.is_published
+            )
+
         except Exception as e:
-            logger.error(f"Database Error during post edit: {e}")
-            flash("Failed to update post.", "danger")
-            return render_template("make-post.html", form=form, is_edit=True)
-            
+            logger.exception(f"Database error during post edit: {e}")
+            flash("Failed to update post. Please try again.", "danger")
+
+            return render_template(
+                "make-post.html",
+                form=form,
+                is_edit=True,
+                post_id=post.id,
+                is_published=post.is_published
+            )
+                    
 
         if is_published:
             # 3. NOTIFICATIONS (Web Push & Digest Log)
