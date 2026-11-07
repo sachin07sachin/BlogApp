@@ -341,7 +341,7 @@ class BlogPost(db.Model):
     author = relationship("User", back_populates="posts")
     
     title: Mapped[str] = mapped_column(String(250), nullable=False)
-    normalized_title: Mapped[str] = mapped_column(String(750), nullable=False)
+    normalized_title: Mapped[str] = mapped_column(Text, nullable=False)
     subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
     date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
